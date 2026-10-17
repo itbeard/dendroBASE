@@ -20,19 +20,19 @@ _WHEEL_CANVASES: set[tk.Canvas] = set()
 
 # ----------------------------------------------------------------- кола мышы
 def _wheel_step(event: tk.Event) -> int:
-    """Крок пракруткі ў радках: Windows дае delta кратна 120, macOS - малыя лікі, X11 - кнопкі 4/5."""
+    """Windows і Tk 9 даюць delta кратна 120, macOS/Tk 8 — малыя лікі, X11 — кнопкі 4/5."""
     number = getattr(event, "num", None)
     if number == 4:
         return -1
     if number == 5:
         return 1
     delta = getattr(event, "delta", 0) or 0
-    if sys.platform == "darwin":
+    if sys.platform == "darwin" and tk.TkVersion < 9:
         return -int(delta)
     return -int(delta / 120)
 
 
-def _dispatch_wheel(event: tk.Event) -> str | None:
+def _dispatch_wheel(event: tk.Event, *, touchpad: bool = False) -> str | None:
     """Знайсці зарэгістраваны canvas пад курсорам і пракруціць яго.
 
     На Windows падзея кола прыходзіць у віджэт з фокусам, таму шукаем па каардынатах курсора.
@@ -46,9 +46,17 @@ def _dispatch_wheel(event: tk.Event) -> str | None:
         return None
     while target is not None:
         if target in _WHEEL_CANVASES:
-            step = _wheel_step(event)
-            if step:
-                target.yview_scroll(step, "units")
+            if touchpad:
+                # Tk 9 перадае дакладную пракрутку асобнай падзеяй, з двума
+                # запакаванымі зрухамі ў пікселях. Canvas пракручваецца без страты дакладнасці.
+                _, dy = target.tk.call("tk::PreciseScrollDeltas", event.delta)
+                bounds = target.bbox("all")
+                if bounds and bounds[3] > bounds[1] and dy:
+                    target.yview_moveto(target.yview()[0] - int(dy) / (bounds[3] - bounds[1]))
+            else:
+                step = _wheel_step(event)
+                if step:
+                    target.yview_scroll(step, "units")
             return "break"
         target = getattr(target, "master", None)
     return None
@@ -62,6 +70,8 @@ def enable_mousewheel(canvas: tk.Canvas) -> None:
     if not getattr(app_root, "_dendrobase_wheel_bound", False):
         for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
             app_root.bind_all(sequence, _dispatch_wheel, add="+")
+        if tk.TkVersion >= 9:
+            app_root.bind_all("<TouchpadScroll>", lambda event: _dispatch_wheel(event, touchpad=True), add="+")
         setattr(app_root, "_dendrobase_wheel_bound", True)
 
 

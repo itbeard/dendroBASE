@@ -13,6 +13,7 @@ from .db import ConnectionFailed, DatabaseError, DatabaseManager
 from .logging_setup import setup_logging
 from .ui.app import DendroApp
 from .ui.feedback import install_exception_handler, show_error
+from .ui.runtime import UnsupportedTkError, check_tk_runtime
 
 log = logging.getLogger("dendrobase")
 
@@ -53,6 +54,14 @@ def main(argv: list[str] | None = None) -> int:
     root = tk.Tk()
     root.withdraw()
     install_exception_handler(root)
+    try:
+        check_tk_runtime(root)
+    except UnsupportedTkError as exc:
+        try:
+            show_error("Несумяшчальная версія Tk", str(exc), parent=root)
+        finally:
+            root.destroy()
+        return 2
 
     env_hint = " або ".join(str(path) for path in dotenv_candidates())
     try:

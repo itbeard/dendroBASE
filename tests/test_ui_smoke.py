@@ -351,6 +351,34 @@ def test_same_dialog_is_not_opened_twice(app):
     app._dialogs["new_probe"].destroy()
 
 
+def test_button_clicks_across_surface_after_resize(app):
+    """Правярае Tcl-bindings і макет; натыўныя падзеі macOS патрабуюць асобнай праверкі мышшу."""
+    app.select_probe("p1")
+    button = app.info_tab.save_button
+    clicks = []
+    button.configure(command=lambda: clicks.append(True))
+    app.root.deiconify()
+    for width in (1400, 1000):
+        app.root.geometry(f"{width}x740")
+        app.root.update_idletasks()
+        w, h = button.winfo_width(), button.winfo_height()
+        for x, y in ((5, h // 2), (w // 2, h // 2), (w - 6, h // 2),
+                     (w // 2, 5), (w // 2, h - 6)):
+            before = len(clicks)
+            button.event_generate("<Enter>", x=x, y=y)
+            app.root.update_idletasks()  # падказка таксама не павінна зрушыць кнопку
+            assert app.root.winfo_containing(button.winfo_rootx() + x, button.winfo_rooty() + y) is button
+            button.event_generate("<ButtonPress-1>", x=x, y=y)
+            button.event_generate("<ButtonRelease-1>", x=x, y=y)
+            assert len(clicks) == before + 1
+            button.event_generate("<Leave>", x=x, y=y)
+
+    button.state(["disabled"])
+    button.event_generate("<ButtonPress-1>", x=w // 2, y=h // 2)
+    button.event_generate("<ButtonRelease-1>", x=w // 2, y=h // 2)
+    assert len(clicks) == 10
+
+
 def test_gui_startup_does_not_import_folium_or_pandas():
     import subprocess
     import sys
@@ -358,3 +386,24 @@ def test_gui_startup_does_not_import_folium_or_pandas():
             "print(sorted(m for m in ('folium', 'pandas', 'numpy') if m in sys.modules))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
     assert out.stdout.strip() == "[]"
+
+
+@pytest.mark.skipif(tk.TkVersion < 9, reason="TouchpadScroll з'явіўся ў Tk 9")
+def test_tk9_touchpad_scrolls_form_under_pointer(root):
+    from tkinter import ttk
+    from dendrobase.ui.widgets import ScrollableFrame
+
+    root.geometry("500x300")
+    scroll = ScrollableFrame(root)
+    scroll.pack(fill="both", expand=True)
+    labels = [ttk.Label(scroll.inner, text=f"Радок {i}") for i in range(80)]
+    for label in labels:
+        label.pack()
+    root.deiconify()
+    root.update_idletasks()
+    label = labels[0]
+    assert scroll.canvas.yview()[0] == 0
+    # %D: high 16 bits = X, low 16 bits = signed Y; event travels from a child to bind_all.
+    label.event_generate("<TouchpadScroll>", delta=(-20 & 0xffff),
+                         rootx=label.winfo_rootx() + 2, rooty=label.winfo_rooty() + 2)
+    assert 0 < scroll.canvas.yview()[0] < 0.1

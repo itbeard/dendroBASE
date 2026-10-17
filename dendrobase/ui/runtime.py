@@ -5,6 +5,8 @@ import logging
 import sys
 import tkinter as tk
 
+from ..i18n import tr
+
 log = logging.getLogger("dendrobase.ui")
 MIN_AQUA_TK = "8.6.13"
 
@@ -26,11 +28,11 @@ def check_tk_runtime(root: tk.Misc) -> None:
              sys.executable, root.tk.call("info", "patchlevel"), version,
              window_system, root.tk.call("tk", "scaling"))
     if window_system == "aqua" and int(root.tk.call("package", "vcompare", version, MIN_AQUA_TK)) < 0:
-        raise UnsupportedTkError(
-            f"Гэты Python выкарыстоўвае Tk {version}. На macOS патрэбны Tk {MIN_AQUA_TK} або навейшы: "
+        raise UnsupportedTkError(tr(
+            "Гэты Python выкарыстоўвае Tk {version}. На macOS патрэбны Tk {minimum} або навейшы: "
             "стары Tk губляе клікі па кнопках, спісах і іншых элементах інтэрфейсу.\n\n"
-            f"Інтэрпрэтатар: {sys.executable}\n\n"
+            "Інтэрпрэтатар: {executable}\n\n"
             "Запусціце праграму праз .venv/bin/python -m dendrobase, калі асяроддзе з новым Tk "
             "ужо створана. Інакш усталюйце Python з новым Tk і стварыце віртуальнае асяроддзе нанова "
             "(README → «Кнопкі не рэагуюць на клік»). Абнаўленне pip-пакетаў не абнаўляе Tk."
-        )
+        ).format(version=version, minimum=MIN_AQUA_TK, executable=sys.executable))

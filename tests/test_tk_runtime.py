@@ -46,12 +46,14 @@ def test_runtime_checks_actual_tk_and_only_rejects_old_aqua(window_system, versi
 def test_main_stops_before_database_and_destroys_root_for_unsupported_tk(tmp_path, monkeypatch):
     from dendrobase import __main__ as entry
     from dendrobase.config import DatabaseSettings, Settings
+    from dendrobase.ui.preferences import Preferences
 
     root = Mock()
     database = Mock()
     show_error = Mock()
     settings = Settings(db=DatabaseSettings(), log_dir=tmp_path)
     monkeypatch.setattr(entry.Settings, "from_env", lambda: settings)
+    monkeypatch.setattr(entry, "load_preferences", lambda: Preferences(language="be"))
     monkeypatch.setattr(entry.tk, "Tk", lambda: root)
     monkeypatch.setattr(entry, "enable_high_dpi", lambda: None)
     monkeypatch.setattr(entry, "DatabaseManager", database)

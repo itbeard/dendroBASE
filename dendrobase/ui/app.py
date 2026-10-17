@@ -1,4 +1,8 @@
-"""Галоўнае акно: спіс пробных плошчаў злева, укладкі справа, радок стану, гарачыя клавішы."""
+"""Галоўнае акно: спіс пробных плошчаў злева, укладкі справа, радок стану, гарачыя клавішы.
+
+Мова і тэма мяняюцца на хаду: інтэрфейс перабудоўваецца нанова (гл. apply_preferences), а адкрытыя
+дыялогі застаюцца як ёсць да закрыцця.
+"""
 from __future__ import annotations
 
 import re
@@ -9,12 +13,14 @@ from tkinter import ttk
 from .. import __version__
 from ..config import Settings
 from ..db import DatabaseError, DatabaseManager
+from ..i18n import set_language, tr
 from .crn_tab import CrnTab
-from .dialogs import AddProbeDialog, CrnDialog, PorodaHelpDialog, SeriesDialog, SqlQueryDialog
+from .dialogs import AddProbeDialog, CrnDialog, PorodaHelpDialog, SeriesDialog, SettingsDialog, SqlQueryDialog
 from .feedback import ask_yes_no, show_error, show_info
 from .filter_tab import FilterTab
 from .info_tab import InfoTab
 from .map_tab import MapTab
+from .preferences import Preferences, load_preferences, save_preferences
 from .series_tab import SeriesTab
 from .statusbar import StatusBar
 from .theme import PAD, apply_theme
@@ -27,7 +33,7 @@ _GEOMETRY = re.compile(r"^(\d+)x(\d+)\+(-?\d+)\+(-?\d+)$")
 
 class DendroApp:
     def __init__(self, root: tk.Tk, db: DatabaseManager, settings: Settings | None = None,
-                 log_path: Path | None = None) -> None:
+                 log_path: Path | None = None, preferences: Preferences | None = None) -> None:
         self.root = root
         self.db = db
         self.settings = settings
@@ -37,26 +43,24 @@ class DendroApp:
         self._dialogs: dict[str, tk.Toplevel] = {}
         self._syncing_list = False
         self.state = load_ui_state()
+        self.preferences = (preferences or load_preferences()).normalized()
+        set_language(self.preferences.language)
 
-        apply_theme(root)
         root.title(APP_TITLE)
         root.minsize(1000, 640)
         self._restore_geometry()
         root.protocol("WM_DELETE_WINDOW", self.on_exit)
         try:
             root.createcommand("::tk::mac::Quit", self.on_exit)  # Cmd+Q на macOS
+            root.createcommand("::tk::mac::ShowPreferences", self.open_settings)  # Cmd+, і пункт у меню праграмы
         except tk.TclError:
             pass
 
-        self._build_menu()
-        self._build_layout()
-        self._bind_shortcuts()
-        self.refresh_probes()
-        self.map_tab.refresh()
+        self._build_ui()
         last = self.state.get("last_probe")
         if isinstance(last, str) and last in self.listed_probes():
             self.select_probe(last)
-        root.after(50, self._restore_sash)
+        root.after(50, lambda: self._restore_sash(self.state.get("sash")))
 
     # ------------------------------------------------------------------ стан
     def _restore_geometry(self) -> None:
@@ -71,54 +75,100 @@ class DendroApp:
             return
         self.root.geometry("1400x860")
 
-    def _restore_sash(self) -> None:
-        sash = self.state.get("sash")
+    def _restore_sash(self, sash: object) -> None:
         if isinstance(sash, int) and 200 <= sash <= 600:
             try:
                 self.paned.sashpos(0, sash)
             except tk.TclError:
                 pass
 
-    def _save_state(self) -> None:
+    def _current_sash(self) -> int | None:
         try:
-            sash = self.paned.sashpos(0)
-        except tk.TclError:
-            sash = None
-        save_ui_state({"geometry": self.root.geometry(), "sash": sash, "last_probe": self.current_probe})
+            return int(self.paned.sashpos(0))
+        except (tk.TclError, ValueError):
+            return None
+
+    def _save_state(self) -> None:
+        save_ui_state({"geometry": self.root.geometry(), "sash": self._current_sash(), "last_probe": self.current_probe})
+
+    # ---------------------------------------------------------------- налады
+    def apply_preferences(self, preferences: Preferences) -> bool:
+        """Захаваць мову і тэму і перабудаваць інтэрфейс. False, калі карыстальнік адмяніў з-за незахаваных змен."""
+        preferences = preferences.normalized()
+        if preferences == self.preferences:
+            return True
+        if not self.info_tab.check_unsaved():
+            return False
+        save_preferences(preferences)
+        self.preferences = preferences
+        set_language(preferences.language)
+        self._rebuild_ui()
+        self.notify(tr("Налады захаваны."), kind="ok")
+        return True
+
+    def _rebuild_ui(self) -> None:
+        probe, sash = self.current_probe, self._current_sash()
+        self._destroy_ui()
+        self._build_ui()
+        if probe and self.probe_list.exists(probe):
+            self.select_probe(probe, force=True)
+        else:
+            self.select_probe(None, force=True)
+        self.root.after(50, lambda: self._restore_sash(sash))
+
+    def _destroy_ui(self) -> None:
+        """Прыбраць меню і ўсё змесціва галоўнага акна; дыялогі (Toplevel) застаюцца."""
+        if self._search_after is not None:
+            self.root.after_cancel(self._search_after)
+            self._search_after = None
+        self.root.config(menu="")
+        for child in list(self.root.winfo_children()):
+            if not isinstance(child, tk.Toplevel):
+                child.destroy()
+
+    def _build_ui(self) -> None:
+        apply_theme(self.root, self.preferences.theme)
+        self._build_menu()
+        self._build_layout()
+        self._bind_shortcuts()
+        self.refresh_probes()
+        self.map_tab.refresh()
 
     # ----------------------------------------------------------------- меню
     def _build_menu(self) -> None:
-        menubar = tk.Menu(self.root)
+        self.menubar = menubar = tk.Menu(self.root)
         self.root.config(menu=menubar)
 
         file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Файл", menu=file_menu)
-        file_menu.add_command(label="Новая пробная плошча…", command=self.add_new_probe, accelerator="Ctrl+N")
-        file_menu.add_command(label="Абнавіць спіс", command=self.refresh_probes, accelerator="F5")
+        menubar.add_cascade(label=tr("Файл"), menu=file_menu)
+        file_menu.add_command(label=tr("Новая пробная плошча…"), command=self.add_new_probe, accelerator="Ctrl+N")
+        file_menu.add_command(label=tr("Абнавіць спіс"), command=self.refresh_probes, accelerator="F5")
         file_menu.add_separator()
-        file_menu.add_command(label="Выйсці", command=self.on_exit, accelerator="Ctrl+Q")
+        file_menu.add_command(label=tr("Выйсці"), command=self.on_exit, accelerator="Ctrl+Q")
 
         edit_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Праўка", menu=edit_menu)
-        edit_menu.add_command(label="Захаваць змены ПП", command=lambda: self.info_tab.save(), accelerator="Ctrl+S")
-        edit_menu.add_command(label="Дадаць CRN да выбранай ПП…", command=self.add_crn)
-        edit_menu.add_command(label="Дадаць SERIES да выбранай ПП…", command=self.add_series)
+        menubar.add_cascade(label=tr("Праўка"), menu=edit_menu)
+        edit_menu.add_command(label=tr("Захаваць змены ПП"), command=lambda: self.info_tab.save(), accelerator="Ctrl+S")
+        edit_menu.add_command(label=tr("Дадаць CRN да выбранай ПП…"), command=self.add_crn)
+        edit_menu.add_command(label=tr("Дадаць SERIES да выбранай ПП…"), command=self.add_series)
         edit_menu.add_separator()
-        edit_menu.add_command(label="Абнавіць геаметрыю выбранай ПП", command=self.update_selected_geometry)
-        edit_menu.add_command(label="Абнавіць геаметрыю ўсіх ПП", command=self.update_all_geometry)
+        edit_menu.add_command(label=tr("Абнавіць геаметрыю выбранай ПП"), command=self.update_selected_geometry)
+        edit_menu.add_command(label=tr("Абнавіць геаметрыю ўсіх ПП"), command=self.update_all_geometry)
 
         tools = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Інструменты", menu=tools)
-        tools.add_command(label="SQL Запыт…", command=self.open_sql)
-        tools.add_command(label="Адкрыць карту ў браўзеры", command=lambda: self.map_tab.open_map())
+        menubar.add_cascade(label=tr("Інструменты"), menu=tools)
+        tools.add_command(label=tr("SQL-запыт…"), command=self.open_sql)
+        tools.add_command(label=tr("Адкрыць карту ў браўзеры"), command=lambda: self.map_tab.open_map())
+        tools.add_separator()
+        tools.add_command(label=tr("Налады…"), command=self.open_settings, accelerator="Ctrl+,")
 
         help_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Даведка", menu=help_menu)
-        help_menu.add_command(label="Расшыфроўка пародаў", command=lambda: PorodaHelpDialog(self.root))
-        help_menu.add_command(label="Гарачыя клавішы", command=self.show_shortcuts)
-        help_menu.add_command(label="Дзе файл логаў", command=self.show_log_location)
+        menubar.add_cascade(label=tr("Даведка"), menu=help_menu)
+        help_menu.add_command(label=tr("Расшыфроўка пародаў"), command=lambda: PorodaHelpDialog(self.root))
+        help_menu.add_command(label=tr("Гарачыя клавішы"), command=self.show_shortcuts)
+        help_menu.add_command(label=tr("Дзе файл логаў"), command=self.show_log_location)
         help_menu.add_separator()
-        help_menu.add_command(label="Аб праграме", command=self.show_about)
+        help_menu.add_command(label=tr("Аб праграме"), command=self.show_about)
 
     def _bind_shortcuts(self) -> None:
         bindings = {
@@ -126,6 +176,7 @@ class DendroApp:
             "f": lambda: self.search.focus_set(),
             "s": lambda: self.info_tab.save(),
             "q": self.on_exit,
+            "comma": self.open_settings,
         }
         for key, handler in bindings.items():
             for modifier in ("Control", "Command"):
@@ -148,29 +199,30 @@ class DendroApp:
         self.paned.add(left, weight=0)
         head = ttk.Frame(left)
         head.pack(fill="x")
-        ttk.Label(head, text="Пробныя плошчы", style="Heading.TLabel").pack(side="left")
+        ttk.Label(head, text=tr("Пробныя плошчы"), style="Heading.TLabel").pack(side="left")
         self.count_label = ttk.Label(head, text="", style="Subtitle.TLabel")
         self.count_label.pack(side="right")
-        self.search = PlaceholderEntry(left, placeholder="Пошук па коду ПП…")
+        self.search = PlaceholderEntry(left, placeholder=tr("Пошук па коду ПП…"))
         self.search.pack(fill="x", pady=(6, 6))
         self.search.bind("<KeyRelease>", self._on_search_typed)
         self.search.bind("<Escape>", lambda _e: (self.search.set_text(""), self.refresh_probes()))
-        add_tooltip(self.search, "Ctrl+F ставіць курсор сюды, Esc ачышчае.")
+        add_tooltip(self.search, tr("Ctrl+F ставіць курсор сюды, Esc ачышчае."))
 
-        self.probe_list = make_treeview(left, ("Код", "Парода", "Гады"), horizontal=False, selectmode="browse")
-        self.probe_list.column("Код", width=120, minwidth=80)
-        self.probe_list.column("Парода", width=64, minwidth=50, stretch=False)
-        self.probe_list.column("Гады", width=92, minwidth=70, stretch=False)
+        code, species, years = tr("Код"), tr("Парода"), tr("Гады")
+        self.probe_list = make_treeview(left, (code, species, years), horizontal=False, selectmode="browse")
+        self.probe_list.column(code, width=120, minwidth=80)
+        self.probe_list.column(species, width=64, minwidth=50, stretch=False)
+        self.probe_list.column(years, width=92, minwidth=70, stretch=False)
         self.probe_list.master.pack(fill="both", expand=True)
         self.probe_list.bind("<<TreeviewSelect>>", self._on_list_select)
 
         buttons = ttk.Frame(left)
         buttons.pack(fill="x", pady=(PAD, 0))
-        new_button = ttk.Button(buttons, text="+  Новая пробная плошча", command=self.add_new_probe)
+        new_button = ttk.Button(buttons, text=tr("+  Новая пробная плошча"), command=self.add_new_probe)
         new_button.pack(fill="x")
-        add_tooltip(new_button, "Ctrl+N. Майстар у тры крокі: анкета ПП, CRN, SERIES.")
-        ttk.Button(buttons, text="Дадаць CRN да выбранай…", command=self.add_crn).pack(fill="x", pady=(4, 0))
-        ttk.Button(buttons, text="Дадаць SERIES да выбранай…", command=self.add_series).pack(fill="x", pady=(4, 0))
+        add_tooltip(new_button, tr("Ctrl+N. Майстар у тры крокі: анкета ПП, CRN, SERIES."))
+        ttk.Button(buttons, text=tr("Дадаць CRN да выбранай…"), command=self.add_crn).pack(fill="x", pady=(4, 0))
+        ttk.Button(buttons, text=tr("Дадаць SERIES да выбранай…"), command=self.add_series).pack(fill="x", pady=(4, 0))
 
         right = ttk.Frame(self.paned, padding=(PAD, PAD, PAD, PAD))
         self.paned.add(right, weight=1)
@@ -182,11 +234,10 @@ class DendroApp:
         self.series_tab = SeriesTab(self.notebook, self.db, notify=self.notify)
         self.filter_tab = FilterTab(self.notebook, self.db, notify=self.notify)
         self.map_tab = MapTab(self.notebook, self.db, notify=self.notify, on_pick=self._pick_from_map)
-        self.notebook.add(self.info_tab.frame, text="  Інфармацыя аб ПП  ")
-        self.notebook.add(self.crn_tab.frame, text="  CRN храналогія  ")
-        self.notebook.add(self.series_tab.frame, text="  SERIES  ")
-        self.notebook.add(self.filter_tab.frame, text="  Фільтры і пошук  ")
-        self.notebook.add(self.map_tab.frame, text="  Карта  ")
+        for tab, title in ((self.info_tab, tr("Інфармацыя аб ПП")), (self.crn_tab, tr("CRN храналогія")),
+                           (self.series_tab, "SERIES"), (self.filter_tab, tr("Фільтры і пошук")),
+                           (self.map_tab, tr("Карта"))):
+            self.notebook.add(tab.frame, text=f"  {title}  ")
 
     # -------------------------------------------------------------- паведамленні
     def notify(self, text: str, *, kind: str = "info") -> None:
@@ -204,7 +255,7 @@ class DendroApp:
         try:
             summaries = self.db.list_probes(text)
         except DatabaseError as exc:
-            show_error("Памылка", f"Не атрымалася прачытаць спіс ПП:\n{exc}", exc)
+            show_error(tr("Памылка"), tr("Не атрымалася прачытаць спіс ПП:\n{error}").format(error=exc), exc)
             return
         self._syncing_list = True
         try:
@@ -217,7 +268,8 @@ class DendroApp:
                 self.probe_list.see(self.current_probe)
         finally:
             self._syncing_list = False
-        self.count_label.configure(text=f"{len(summaries)}" + (" знойдзена" if text else ""))
+        count = len(summaries)
+        self.count_label.configure(text=tr("{count} знойдзена").format(count=count) if text else str(count))
 
     def listed_probes(self) -> list[str]:
         return [str(iid) for iid in self.probe_list.get_children()]
@@ -268,7 +320,7 @@ class DendroApp:
 
     def _require_probe(self) -> str | None:
         if not self.current_probe:
-            self.notify("Спачатку выберыце пробную плошчу са спіса.", kind="warn")
+            self.notify(tr("Спачатку выберыце пробную плошчу са спіса."), kind="warn")
             return None
         return self.current_probe
 
@@ -302,6 +354,9 @@ class DendroApp:
     def open_sql(self) -> None:
         self._open_dialog("sql", lambda: SqlQueryDialog(self.root, self.db, notify=self.notify))
 
+    def open_settings(self) -> None:
+        self._open_dialog("settings", lambda: SettingsDialog(self.root, self.preferences, on_apply=self.apply_preferences))
+
     def update_selected_geometry(self) -> None:
         probe = self._require_probe()
         if not probe:
@@ -309,60 +364,63 @@ class DendroApp:
         try:
             info = self.db.get_probe_info(probe) or {}
             if not info.get("shirota_grd") or not info.get("dolgota_grd"):
-                self.notify(f"Для ПП {probe} не зададзены каардынаты: спачатку ўвядзіце шырату і даўгату.", kind="warn")
+                self.notify(tr("Для ПП {probe} не зададзены каардынаты: спачатку ўвядзіце шырату і даўгату.")
+                            .format(probe=probe), kind="warn")
                 return
             count = self.db.update_geometry(probe)
         except DatabaseError as exc:
-            show_error("Памылка", str(exc), exc)
+            show_error(tr("Памылка"), str(exc), exc)
             return
         if count:
-            self.notify(f"Геаметрыя для {probe} абноўлена.", kind="ok")
+            self.notify(tr("Геаметрыя для {probe} абноўлена.").format(probe=probe), kind="ok")
             self.map_tab.refresh()
         else:
-            self.notify("Геаметрыя не абноўлена: праверце, што каардынаты не нулявыя.", kind="warn")
+            self.notify(tr("Геаметрыя не абноўлена: праверце, што каардынаты не нулявыя."), kind="warn")
 
     def update_all_geometry(self) -> None:
         try:
             total = self.db.count_with_coords()
             if total == 0:
-                self.notify("Няма ПП з каардынатамі для абнаўлення.", kind="warn")
+                self.notify(tr("Няма ПП з каардынатамі для абнаўлення."), kind="warn")
                 return
-            if not ask_yes_no("Пацверджанне", f"Будзе абноўлена геаметрыя для {total} ПП. Працягнуць?"):
+            if not ask_yes_no(tr("Пацверджанне"),
+                              tr("Будзе абноўлена геаметрыя для {count} ПП. Працягнуць?").format(count=total)):
                 return
             count = self.db.update_geometry_all()
         except DatabaseError as exc:
-            show_error("Памылка", str(exc), exc)
+            show_error(tr("Памылка"), str(exc), exc)
             return
-        self.notify(f"Геаметрыя абноўлена для {count} ПП.", kind="ok")
+        self.notify(tr("Геаметрыя абноўлена для {count} ПП.").format(count=count), kind="ok")
         self.map_tab.refresh()
 
     # ---------------------------------------------------------------- даведка
     def show_shortcuts(self) -> None:
-        show_info("Гарачыя клавішы",
-                  "Ctrl+N   новая пробная плошча\n"
-                  "Ctrl+F   пошук у спісе ПП\n"
-                  "Ctrl+S   захаваць змены на ўкладцы «Інфармацыя аб ПП»\n"
-                  "F5       абнавіць спіс\n"
-                  "Enter    прымяніць фільтр па гадах / запусціць пошук\n"
-                  "Ctrl+V   уставіць табліцу ў вокнах CRN і SERIES\n"
-                  "Ctrl+Enter   выканаць SQL-запыт\n"
-                  "Ctrl+Q   выйсці\n\n"
-                  "На macOS замест Ctrl працуе Cmd.")
+        show_info(tr("Гарачыя клавішы"),
+                  tr("Ctrl+N   новая пробная плошча\n"
+                     "Ctrl+F   пошук у спісе ПП\n"
+                     "Ctrl+S   захаваць змены на ўкладцы «Інфармацыя аб ПП»\n"
+                     "F5       абнавіць спіс\n"
+                     "Enter    прымяніць фільтр па гадах / запусціць пошук\n"
+                     "Ctrl+V   уставіць табліцу ў вокнах CRN і SERIES\n"
+                     "Ctrl+Enter   выканаць SQL-запыт\n"
+                     "Ctrl+,   налады\n"
+                     "Ctrl+Q   выйсці\n\n"
+                     "На macOS замест Ctrl працуе Cmd."))
 
     def show_log_location(self) -> None:
         if self.log_path:
-            show_info("Файл логаў", str(self.log_path))
+            show_info(tr("Файл логаў"), str(self.log_path))
         else:
-            show_info("Файл логаў", "Файл логаў не ствараўся, логі ідуць толькі ў кансоль.")
+            show_info(tr("Файл логаў"), tr("Файл логаў не ствараўся, логі ідуць толькі ў кансоль."))
 
     def show_about(self) -> None:
         connection = self.settings.db.describe() if self.settings else "?"
         show_info(
-            "Аб праграме",
-            f"DendroBASE {__version__}\n\n"
-            "База дэндрахраналагічных даных Беларусі: пробныя плошчы, храналогіі CRN "
-            "і індывідуальныя серыі ў PostgreSQL/PostGIS.\n\n"
-            f"Падключэнне: {connection}",
+            tr("Аб праграме"),
+            tr("DendroBASE {version}\n\n"
+               "База дэндрахраналагічных даных Беларусі: пробныя плошчы, храналогіі CRN "
+               "і індывідуальныя серыі ў PostgreSQL/PostGIS.\n\n"
+               "Падключэнне: {connection}").format(version=__version__, connection=connection),
         )
 
     def on_exit(self) -> None:

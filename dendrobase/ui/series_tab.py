@@ -6,12 +6,13 @@ from tkinter import filedialog, ttk
 from typing import Callable
 
 from ..db import DatabaseError, DatabaseManager
+from ..i18n import tr
 from ..models import SeriesMatrix
 from ..parsing import parse_int
 from .chart import LineChart
 from .feedback import show_error
 from .theme import PAD, PALETTE
-from .widgets import (EXPORT_FILETYPES, add_tooltip, copy_to_clipboard, fill_tree, make_treeview, save_tree_file,
+from .widgets import (add_tooltip, copy_to_clipboard, export_filetypes, fill_tree, make_treeview, save_tree_file,
                       set_columns, tree_to_tsv)
 
 Notify = Callable[..., None]
@@ -27,30 +28,30 @@ class SeriesTab:
 
         header = ttk.Frame(self.frame)
         header.pack(fill="x")
-        ttk.Label(header, text="Індывідуальныя серыі", style="Heading.TLabel").pack(side="left")
+        ttk.Label(header, text=tr("Індывідуальныя серыі"), style="Heading.TLabel").pack(side="left")
         self.info = ttk.Label(header, text="", style="Subtitle.TLabel")
         self.info.pack(side="left", padx=(PAD * 2, 0))
 
         toolbar = ttk.Frame(self.frame)
         toolbar.pack(fill="x", pady=(6, 4))
-        ttk.Label(toolbar, text="Гады з").pack(side="left")
+        ttk.Label(toolbar, text=tr("Гады з")).pack(side="left")
         self.year_from = ttk.Entry(toolbar, width=7)
         self.year_from.pack(side="left", padx=4)
-        ttk.Label(toolbar, text="па").pack(side="left")
+        ttk.Label(toolbar, text=tr("па")).pack(side="left")
         self.year_to = ttk.Entry(toolbar, width=7)
         self.year_to.pack(side="left", padx=4)
         for entry in (self.year_from, self.year_to):
             entry.bind("<Return>", lambda _e: self.load())
-        ttk.Button(toolbar, text="Прымяніць", command=self.load).pack(side="left", padx=(4, 0))
-        ttk.Button(toolbar, text="Усе гады", command=self.clear_filter).pack(side="left", padx=4)
+        ttk.Button(toolbar, text=tr("Прымяніць"), command=self.load).pack(side="left", padx=(4, 0))
+        ttk.Button(toolbar, text=tr("Усе гады"), command=self.clear_filter).pack(side="left", padx=4)
         ttk.Separator(toolbar, orient="vertical").pack(side="left", fill="y", padx=PAD, pady=2)
-        ttk.Label(toolbar, text="Вылучыць серыю:").pack(side="left")
+        ttk.Label(toolbar, text=tr("Вылучыць серыю:")).pack(side="left")
         self.highlight = ttk.Combobox(toolbar, width=10, state="readonly", values=[""])
         self.highlight.pack(side="left", padx=4)
         self.highlight.bind("<<ComboboxSelected>>", lambda _e: self._update_chart())
-        add_tooltip(self.highlight, "Вылучаная серыя малюецца тоўстай чырвонай лініяй, астатнія шэрыя.")
-        ttk.Button(toolbar, text="Экспарт…", command=self.export).pack(side="right")
-        ttk.Button(toolbar, text="Капіраваць", command=self.copy).pack(side="right", padx=4)
+        add_tooltip(self.highlight, tr("Вылучаная серыя малюецца тоўстай чырвонай лініяй, астатнія шэрыя."))
+        ttk.Button(toolbar, text=tr("Экспарт…"), command=self.export).pack(side="right")
+        ttk.Button(toolbar, text=tr("Капіраваць"), command=self.copy).pack(side="right", padx=4)
 
         paned = ttk.PanedWindow(self.frame, orient="vertical")
         paned.pack(fill="both", expand=True, pady=(0, PAD))
@@ -75,15 +76,15 @@ class SeriesTab:
         try:
             year_from, year_to = parse_int(self.year_from.get()), parse_int(self.year_to.get())
         except ValueError:
-            self.info.configure(text="Гады фільтра павінны быць цэлымі лікамі.", style="Error.TLabel")
+            self.info.configure(text=tr("Гады фільтра павінны быць цэлымі лікамі."), style="Error.TLabel")
             return
         try:
             self.matrix = self.db.get_series_matrix(self.probe, year_from, year_to)
         except DatabaseError as exc:
-            show_error("Памылка", f"Не атрымалася прачытаць SERIES:\n{exc}", exc)
+            show_error(tr("Памылка"), tr("Не атрымалася прачытаць SERIES:\n{error}").format(error=exc), exc)
             return
         if self.matrix is None:
-            self.info.configure(text="Няма даных")
+            self.info.configure(text=tr("Няма даных"))
             self.chart.clear()
             self.highlight.configure(values=[""])
             self.highlight.set("")
@@ -92,8 +93,8 @@ class SeriesTab:
         set_columns(self.tree, ["year", *matrix.series], width=80,
                     numeric={"year": 0, **{name: 3 for name in matrix.series}})
         fill_tree(self.tree, ([year, *matrix.row(year)] for year in matrix.years))
-        self.info.configure(text=f"{len(matrix.years)} гадоў  ·  {len(matrix.series)} серый  ·  "
-                                 f"{matrix.years[0]}–{matrix.years[-1]}")
+        self.info.configure(text=tr("{years} гадоў  ·  {series} серый  ·  {first}–{last}").format(
+            years=len(matrix.years), series=len(matrix.series), first=matrix.years[0], last=matrix.years[-1]))
         current = self.highlight.get()
         self.highlight.configure(values=[""] + matrix.series)
         self.highlight.set(current if current in matrix.series else "")
@@ -121,22 +122,22 @@ class SeriesTab:
 
     def copy(self) -> None:
         if not self.tree.get_children():
-            self.notify("Няма даных для капіравання.", kind="warn")
+            self.notify(tr("Няма даных для капіравання."), kind="warn")
             return
         copy_to_clipboard(self.frame, tree_to_tsv(self.tree))
-        self.notify(f"SERIES: скапіравана радкоў: {len(self.tree.get_children())}", kind="ok")
+        self.notify(tr("SERIES: скапіравана радкоў: {count}").format(count=len(self.tree.get_children())), kind="ok")
 
     def export(self) -> None:
         if not self.tree.get_children():
-            self.notify("Няма даных для экспарту.", kind="warn")
+            self.notify(tr("Няма даных для экспарту."), kind="warn")
             return
-        target = filedialog.asksaveasfilename(title="Экспарт SERIES", defaultextension=".csv",
-                                              filetypes=EXPORT_FILETYPES, initialfile=f"{self.probe}_series.csv")
+        target = filedialog.asksaveasfilename(title=tr("Экспарт SERIES"), defaultextension=".csv",
+                                              filetypes=export_filetypes(), initialfile=f"{self.probe}_series.csv")
         if not target:
             return
         try:
             count = save_tree_file(self.tree, Path(target))
         except OSError as exc:
-            show_error("Памылка", f"Не атрымалася захаваць файл:\n{exc}", exc)
+            show_error(tr("Памылка"), tr("Не атрымалася захаваць файл:\n{error}").format(error=exc), exc)
             return
-        self.notify(f"SERIES: захавана радкоў: {count} у {target}", kind="ok")
+        self.notify(tr("SERIES: захавана радкоў: {count} у {path}").format(count=count, path=target), kind="ok")

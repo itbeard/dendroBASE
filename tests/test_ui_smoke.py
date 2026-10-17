@@ -129,8 +129,10 @@ def quiet_messages(monkeypatch):
 
 @pytest.fixture()
 def isolated_ui_state(tmp_path, monkeypatch):
-    monkeypatch.setattr("dendrobase.ui.ui_state.STATE_FILE", tmp_path / "ui_state.json")
-    return tmp_path / "ui_state.json"
+    path = tmp_path / "ui_state.json"
+    monkeypatch.setattr("dendrobase.ui.ui_state.STATE_FILE", path)
+    path.write_text('{"language": "be"}', encoding="utf-8")  # інакш праграма стартуе па-англійску
+    return path
 
 
 @pytest.fixture()
@@ -155,7 +157,7 @@ def test_selecting_probe_fills_tabs(app):
     assert app.select_probe("p1")
     app.root.update_idletasks()
     assert app.info_tab.title_label.cget("text") == "p1"
-    assert "С (Сосна)" in app.info_tab.subtitle.cget("text") and "1900–2020" in app.info_tab.subtitle.cget("text")
+    assert "С (Сасна)" in app.info_tab.subtitle.cget("text") and "1900–2020" in app.info_tab.subtitle.cget("text")
     assert app.info_tab.form.get_text(PROBE_KEY) == "p1"
     assert app.info_tab.form.get_text("shirota_grd") == "53.9"
     assert len(app.crn_tab.tree.get_children()) == 2
@@ -194,7 +196,7 @@ def test_info_tab_rejects_bad_numbers_inline(app):
     app.info_tab.form.widgets["shirota_grd"].insert(0, "abc")
     assert not app.info_tab.save()
     assert not [c for c in app.db.calls if c[0] == "upsert_title"]
-    assert "Широта" in app.info_tab.error_label.cget("text")
+    assert "Шырата" in app.info_tab.error_label.cget("text")
     assert app.info_tab.form.labels["shirota_grd"].cget("style") == "Error.TLabel"
 
 
@@ -311,7 +313,7 @@ def test_main_starts_with_real_database(test_db, tmp_path, monkeypatch, quiet_me
     assert quiet_messages == []
 
 
-def test_main_reports_connection_failure(tmp_path, monkeypatch, quiet_messages):
+def test_main_reports_connection_failure(tmp_path, monkeypatch, quiet_messages, isolated_ui_state):
     from dendrobase.__main__ import main
     monkeypatch.setenv("DENDROBASE_DB_NAME", "dendrobase_no_such_database")
     monkeypatch.setenv("DENDROBASE_LOG_DIR", str(tmp_path))
@@ -377,6 +379,78 @@ def test_button_clicks_across_surface_after_resize(app):
     button.event_generate("<ButtonPress-1>", x=w // 2, y=h // 2)
     button.event_generate("<ButtonRelease-1>", x=w // 2, y=h // 2)
     assert len(clicks) == 10
+
+
+def test_settings_dialog_switches_language_and_theme_live(app, isolated_ui_state):
+    from dendrobase import i18n
+    from dendrobase.ui.preferences import Preferences, load_preferences
+    from dendrobase.ui.theme import PALETTE, is_dark
+    app.select_probe("p1")
+    app.notify("тэст", kind="info")  # адкладзеная ачыстка не павінна зваліцца пасля перабудовы
+    old_info_tab = app.info_tab
+
+    app.open_settings()
+    dialog = app._dialogs["settings"]
+    assert app.menubar.entrycget(0, "label") == "Файл"
+
+    applied = app.apply_preferences(Preferences(language="en", theme="dark"))
+    assert applied and i18n.get_language() == "en"
+    assert load_preferences(isolated_ui_state) == Preferences(language="en", theme="dark")
+    assert app.menubar.entrycget(0, "label") == "File"
+    assert app.notebook.tab(0, "text").strip() == "Plot info"
+    assert app.info_tab is not old_info_tab and not old_info_tab.frame.winfo_exists()
+    assert app.current_probe == "p1" and app.info_tab.title_label.cget("text") == "p1"
+    assert app.info_tab.form.labels["shirota_grd"].cget("text").startswith("Latitude")
+    assert "Pine" in app.info_tab.subtitle.cget("text")
+    assert app.status.probe.cget("text") == "Plot: p1"
+    assert is_dark(PALETTE["table_bg"]) and not is_dark(PALETTE["text"])
+    assert dialog.winfo_exists()  # дыялог налад жыве, пакуль карыстальнік яго не зачыніў
+    app.root.update()  # прагнаць адкладзеныя after-калбэкі старога радка стану
+
+    assert app.apply_preferences(Preferences(language="be", theme="light"))
+    assert app.menubar.entrycget(0, "label") == "Файл"
+    assert not is_dark(PALETTE["table_bg"])
+    assert app.apply_preferences(app.preferences)  # без змен нічога не перабудоўваецца
+    dialog.destroy()
+
+
+def test_settings_dialog_collects_values_and_closes_on_apply(app):
+    from dendrobase.ui.dialogs import SettingsDialog
+    from dendrobase.ui.preferences import Preferences
+    received = []
+    dialog = SettingsDialog(app.root, Preferences(language="be", theme="system"), on_apply=lambda p: (received.append(p), True)[1])
+    assert dialog.language.get() == "be" and dialog.theme.get() == "system"
+    dialog.language.set("en")
+    dialog.theme.set("dark")
+    dialog.save()
+    assert received == [Preferences(language="en", theme="dark")]
+    assert not dialog.dialog.winfo_exists()
+
+    refused = SettingsDialog(app.root, Preferences(), on_apply=lambda p: False)
+    refused.save()
+    assert refused.dialog.winfo_exists()  # адмова (незахаваныя змены) пакідае дыялог адкрытым
+    refused.dialog.destroy()
+
+
+def test_unsaved_changes_block_preference_change(app, monkeypatch):
+    from dendrobase.ui.preferences import Preferences
+    app.select_probe("p1")
+    app.info_tab.form.widgets["shirota_grd"].insert(0, "1")
+    monkeypatch.setattr(feedback.messagebox, "askyesnocancel", lambda *a, **kw: None)  # адмена
+    assert not app.apply_preferences(Preferences(language="en"))
+    assert app.preferences.language == "be" and app.info_tab.is_dirty()
+
+
+def test_main_starts_in_english_by_default(test_db, tmp_path, monkeypatch, quiet_messages, isolated_ui_state):
+    from dendrobase import i18n
+    from dendrobase.__main__ import main
+    isolated_ui_state.write_text("{}", encoding="utf-8")  # першы запуск: налад яшчэ няма
+    monkeypatch.setenv("DENDROBASE_DB_NAME", test_db.settings.dbname)
+    monkeypatch.setenv("DENDROBASE_LOG_DIR", str(tmp_path))
+    seen = {}
+    monkeypatch.setattr(tk.Tk, "mainloop", lambda self: (seen.update(language=i18n.get_language()), self.destroy()))
+    assert main() == 0
+    assert seen["language"] == "en"
 
 
 def test_gui_startup_does_not_import_folium_or_pandas():

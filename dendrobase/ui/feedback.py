@@ -5,6 +5,8 @@ import logging
 import tkinter as tk
 from tkinter import messagebox
 
+from ..i18n import tr
+
 log = logging.getLogger("dendrobase.ui")
 
 
@@ -46,8 +48,8 @@ def install_exception_handler(root: tk.Tk) -> None:
         log.error("Неапрацаваная памылка ў інтэрфейсе", exc_info=(exc_type, exc_value, traceback))
         try:
             messagebox.showerror(
-                "Нечаканая памылка",
-                f"{exc_type.__name__}: {exc_value}\n\nПадрабязнасці запісаны ў файл логаў.",
+                tr("Нечаканая памылка"),
+                tr("{error}\n\nПадрабязнасці запісаны ў файл логаў.").format(error=f"{exc_type.__name__}: {exc_value}"),
             )
         except tk.TclError:
             pass

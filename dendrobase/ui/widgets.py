@@ -13,6 +13,7 @@ from pathlib import Path
 from tkinter import ttk
 from typing import Callable, Iterable, Mapping, Sequence
 
+from ..i18n import tr
 from .theme import PALETTE
 
 _WHEEL_CANVASES: set[tk.Canvas] = set()
@@ -81,6 +82,8 @@ class ScrollableFrame(ttk.Frame):
     def __init__(self, master: tk.Misc, **kwargs) -> None:
         super().__init__(master, **kwargs)
         self.canvas = tk.Canvas(self, highlightthickness=0, borderwidth=0)
+        if PALETTE.get("window_bg"):
+            self.canvas.configure(background=PALETTE["window_bg"])  # фон тэмы, а не фон Canvas па змаўчанні
         self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.inner = ttk.Frame(self.canvas)
         self._window = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
@@ -348,7 +351,9 @@ def save_tree_file(tree: ttk.Treeview, path: Path) -> int:
     return len(rows)
 
 
-EXPORT_FILETYPES = [("CSV (коска)", "*.csv"), ("Тэкст з табуляцыямі", "*.tsv"), ("Усе файлы", "*.*")]
+def export_filetypes() -> list[tuple[str, str]]:
+    """Тыпы файлаў для дыялога экспарту на бягучай мове (функцыя, бо мова выбіраецца пасля імпарту)."""
+    return [(tr("CSV (коска)"), "*.csv"), (tr("Тэкст з табуляцыямі"), "*.tsv"), (tr("Усе файлы"), "*.*")]
 
 
 # ------------------------------------------------------------------ буфер

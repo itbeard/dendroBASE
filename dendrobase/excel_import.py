@@ -25,6 +25,7 @@ import pandas as pd
 
 from .config import ConfigError, Settings
 from .db import GEO_POLYGON_TABLE, DatabaseError, DatabaseManager
+from .i18n import set_language
 from .logging_setup import setup_logging
 from .models import CrnRow, SeriesValue
 from .parsing import cell_to_text, coerce_title_values, parse_float, parse_int
@@ -466,6 +467,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    set_language("be")  # паведамленні каманды і разбору беларускія незалежна ад налад інтэрфейсу
     args = build_parser().parse_args(argv)
     try:
         settings = Settings.from_env()

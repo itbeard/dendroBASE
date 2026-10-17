@@ -9,6 +9,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Mapping, Sequence
 
+from .i18n import tr
 from .models import CrnRow, SeriesValue
 from .reference import CRN_COLUMNS, field_kind, field_label
 
@@ -25,7 +26,7 @@ def parse_float(value: object) -> float | None:
     if value is None:
         return None
     if isinstance(value, bool):
-        raise ValueError(f"не лік: {value!r}")
+        raise ValueError(tr("не лік: {value}").format(value=repr(value)))
     if isinstance(value, (int, float, Decimal)):
         return float(value)
     text = str(value).strip()
@@ -35,7 +36,7 @@ def parse_float(value: object) -> float | None:
     try:
         return float(normalized)
     except ValueError:
-        raise ValueError(f"не лік: {text!r}") from None
+        raise ValueError(tr("не лік: {value}").format(value=repr(text))) from None
 
 
 def parse_int(value: object) -> int | None:
@@ -44,7 +45,7 @@ def parse_int(value: object) -> int | None:
     if number is None:
         return None
     if not number.is_integer():
-        raise ValueError(f"не цэлы лік: {value!r}")
+        raise ValueError(tr("не цэлы лік: {value}").format(value=repr(value)))
     return int(number)
 
 
@@ -66,7 +67,7 @@ def parse_date(value: object) -> date | None:
             return datetime.strptime(text, fmt).date()
         except ValueError:
             continue
-    raise ValueError(f"не дата: {value!r}")
+    raise ValueError(tr("не дата: {value}").format(value=repr(value)))
 
 
 def cell_to_text(value: object) -> str:
@@ -170,9 +171,9 @@ def parse_crn_table(rows: Sequence[Sequence[str]]) -> tuple[list[CrnRow], list[s
                 elif name in CRN_COLUMNS:
                     record[name] = parse_float(cell)
             if record.get("year") is None:
-                raise ValueError("няма года")
+                raise ValueError(tr("няма года"))
         except ValueError as exc:
-            errors.append(f"радок {number}: {exc}")
+            errors.append(tr("радок {number}: {error}").format(number=number, error=exc))
             continue
         result.append(CrnRow(**record))  # type: ignore[arg-type]
     return result, errors
@@ -183,21 +184,21 @@ def parse_series_table(rows: Sequence[Sequence[str]]) -> tuple[list[SeriesValue]
     values: list[SeriesValue] = []
     errors: list[str] = []
     if len(rows) < 2:
-        errors.append("патрэбны радок загалоўка з назвамі серый і хаця б адзін радок даных")
+        errors.append(tr("патрэбны радок загалоўка з назвамі серый і хаця б адзін радок даных"))
         return values, errors
     names = [cell.strip() for cell in rows[0][1:]]
     if not names:
-        errors.append("у загалоўку няма назваў серый")
+        errors.append(tr("у загалоўку няма назваў серый"))
         return values, errors
     duplicates = sorted({n for n in names if n and names.count(n) > 1})
     if duplicates:
-        errors.append(f"назвы серый паўтараюцца: {', '.join(duplicates)}")
+        errors.append(tr("назвы серый паўтараюцца: {names}").format(names=", ".join(duplicates)))
         return values, errors
     for number, cells in enumerate(rows[1:], 2):
         try:
             year = parse_int(cells[0])
         except ValueError:
-            errors.append(f"радок {number}: год {cells[0]!r} не лік")
+            errors.append(tr("радок {number}: год {value} не лік").format(number=number, value=repr(cells[0])))
             continue
         if year is None:
             continue
@@ -207,7 +208,7 @@ def parse_series_table(rows: Sequence[Sequence[str]]) -> tuple[list[SeriesValue]
             try:
                 value = parse_float(cell)
             except ValueError:
-                errors.append(f"радок {number}, серыя {name}: {cell!r} не лік")
+                errors.append(tr("радок {number}, серыя {name}: {value} не лік").format(number=number, name=name, value=repr(cell)))
                 continue
             if value is not None:
                 values.append(SeriesValue(year, name, value))

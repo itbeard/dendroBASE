@@ -12,8 +12,17 @@ import psycopg2
 import pytest
 from psycopg2 import sql
 
+from dendrobase import i18n
 from dendrobase.config import PROJECT_ROOT, Settings
 from dendrobase.db import DatabaseError, DatabaseManager
+
+
+@pytest.fixture(autouse=True)
+def belarusian_interface():
+    """Чаканыя радкі ў тэстах беларускія; па змаўчанні ж праграма англамоўная."""
+    i18n.set_language("be")
+    yield
+    i18n.set_language(i18n.DEFAULT_LANGUAGE)
 
 
 @pytest.fixture(scope="session")

@@ -5,6 +5,7 @@ import math
 import tkinter as tk
 from typing import Mapping, Sequence
 
+from ..i18n import tr
 from .theme import PALETTE, app_font
 
 
@@ -51,10 +52,10 @@ class LineChart(tk.Canvas):
     MARGIN_BOTTOM = 30
 
     def __init__(self, master: tk.Misc, *, height: int = 200, title: str = "",
-                 empty_text: str = "Няма даных для графіка", **kwargs) -> None:
+                 empty_text: str | None = None, **kwargs) -> None:
         super().__init__(master, height=height, highlightthickness=0, background=PALETTE["chart_bg"], **kwargs)
         self.title = title
-        self.empty_text = empty_text
+        self.empty_text = empty_text if empty_text is not None else tr("Няма даных для графіка")
         self.x: list[float] = []
         self.series: dict[str, list[float | None]] = {}
         self.colors: dict[str, str] = {}

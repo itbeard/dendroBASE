@@ -73,7 +73,7 @@ def test_coerce_title_values_by_field_kind():
     assert data["kvartal"] == "12"
     assert data["opisanie"] is None
     assert "vozrast" not in data
-    assert errors == ["Возраст средний: '80-120'"]
+    assert errors == ["Сярэдні ўзрост: '80-120'"]
 
 
 def test_values_equal():

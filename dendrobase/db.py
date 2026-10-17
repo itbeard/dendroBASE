@@ -16,6 +16,7 @@ from psycopg2 import sql
 from psycopg2.extensions import connection as PgConnection, cursor as PgCursor
 
 from .config import DatabaseSettings
+from .i18n import tr
 from .models import CrnRow, FilterCriteria, ProbePoint, ProbeSummary, QueryResult, SeriesMatrix, SeriesValue
 from .parsing import natural_key
 from .reference import PROBE_KEY, READONLY_COLUMNS, ZONA_NORMALIZATION
@@ -77,7 +78,7 @@ class DatabaseManager:
         except psycopg2.Error as exc:
             self._conn = None
             raise ConnectionFailed(
-                f"Не атрымалася падключыцца да {self.settings.describe()}:\n{_describe(exc)}"
+                tr("Не атрымалася падключыцца да {target}:\n{error}").format(target=self.settings.describe(), error=_describe(exc))
             ) from exc
         log.info("Падключана да %s", self.settings.describe())
 
@@ -113,7 +114,7 @@ class DatabaseManager:
             if conn.closed:
                 log.error("Злучэнне з БД страчана: %s", _describe(exc))
                 self.close()
-                raise ConnectionFailed(f"Злучэнне з базай даных страчана:\n{_describe(exc)}") from exc
+                raise ConnectionFailed(tr("Злучэнне з базай даных страчана:\n{error}").format(error=_describe(exc))) from exc
             _safe_rollback(conn)
             log.error("Памылка SQL: %s", _describe(exc))
             raise DatabaseError(_describe(exc)) from exc
@@ -273,11 +274,11 @@ class DatabaseManager:
         """Дадаць або абнавіць радок ПП. Ключ: n_probnoy_ploshchadi. Слупкі id і geom ігнаруюцца."""
         probe = data.get(PROBE_KEY)
         if not probe:
-            raise ValueError("Код пробнай плошчы (n_probnoy_ploshchadi) абавязковы")
+            raise ValueError(tr("Код пробнай плошчы ({column}) абавязковы").format(column=PROBE_KEY))
         known = set(self.get_title_columns())
         unknown = [column for column in data if column not in known]
         if unknown:
-            raise ValueError(f"У табліцы title няма слупкоў: {', '.join(unknown)}")
+            raise ValueError(tr("У табліцы title няма слупкоў: {columns}").format(columns=", ".join(unknown)))
         columns = [PROBE_KEY] + [c for c in data if c != PROBE_KEY and c not in READONLY_COLUMNS]
         values = [data[c] for c in columns]
         update_columns = columns[1:]
@@ -439,9 +440,9 @@ class DatabaseManager:
     # ------------------------------------------------------------------ PostGIS
     def _require_postgis(self) -> None:
         if not self.has_postgis():
-            raise DatabaseError("PostGIS не ўсталяваны. Выканайце ў базе: CREATE EXTENSION postgis;")
+            raise DatabaseError(tr("PostGIS не ўсталяваны. Выканайце ў базе: CREATE EXTENSION postgis;"))
         if not self.has_geometry_column():
-            raise DatabaseError("У табліцы title няма слупка geom. Выканайце блок PostGIS з schema.sql.")
+            raise DatabaseError(tr("У табліцы title няма слупка geom. Выканайце блок PostGIS з schema.sql."))
 
     def update_geometry(self, probe: str) -> int:
         self._require_postgis()
@@ -470,7 +471,7 @@ class DatabaseManager:
 
     # ---------------------------------------------------------------- SQL-акно
     def execute_sql(self, query: str) -> QueryResult:
-        """Адвольны SQL з акна «SQL Запыт». Выконваецца як ёсць, у адной транзакцыі."""
+        """Адвольны SQL з акна «SQL-запыт». Выконваецца як ёсць, у адной транзакцыі."""
         log.info("SQL з акна запытаў: %s", " ".join(query.split())[:500])
         with self.transaction() as cur:
             cur.execute(query)

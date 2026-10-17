@@ -13,6 +13,8 @@ from typing import Mapping
 
 from dotenv import dotenv_values
 
+from .i18n import tr
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_PREFIX = "DENDROBASE_"
 
@@ -72,13 +74,15 @@ class Settings:
         try:
             port = int(port_text)
         except ValueError:
-            raise ConfigError(f"{ENV_PREFIX}DB_PORT павінен быць лікам, атрымана: {port_text!r}") from None
+            raise ConfigError(tr("{name} павінен быць лікам, атрымана: {value}")
+                              .format(name=f"{ENV_PREFIX}DB_PORT", value=repr(port_text))) from None
         if not 1 <= port <= 65535:
-            raise ConfigError(f"{ENV_PREFIX}DB_PORT па-за дыяпазонам 1..65535: {port}")
+            raise ConfigError(tr("{name} па-за дыяпазонам 1..65535: {value}").format(name=f"{ENV_PREFIX}DB_PORT", value=port))
 
         level = get("LOG_LEVEL", "INFO").upper()
         if level not in _LOG_LEVELS:
-            raise ConfigError(f"{ENV_PREFIX}LOG_LEVEL павінен быць адным з {', '.join(_LOG_LEVELS)}, атрымана: {level!r}")
+            raise ConfigError(tr("{name} павінен быць адным з {choices}, атрымана: {value}")
+                              .format(name=f"{ENV_PREFIX}LOG_LEVEL", choices=", ".join(_LOG_LEVELS), value=repr(level)))
 
         log_dir = _path_setting(get("LOG_DIR"))
         excel_folder = _path_setting(get("EXCEL_FOLDER"))

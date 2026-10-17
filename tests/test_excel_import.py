@@ -64,7 +64,7 @@ def test_read_title_sheet(tmp_path):
     assert data["polnota"] == 0.8
     assert data["koef_sostava"] == 7.0 and data["sostav_drevoj"] == "7Е3С"
     assert data["kvartal"] == "12"
-    assert "vozrast" not in data and errors == ["Возраст средний: '80-120'"]
+    assert "vozrast" not in data and errors == ["Сярэдні ўзрост: '80-120'"]  # подпіс поля беларускі, параметр Excel рускі
     assert "ploshchad_vydela" not in data
 
 
@@ -232,7 +232,7 @@ def test_state_keeps_warnings_and_errors_and_retries_failed_files(tmp_path):
 
     files = read_state(tmp_path)["files"]
     assert files["PP01.xlsx"]["status"] == "done"
-    assert files["PP01.xlsx"]["warnings"][0] == "title, поле прапушчана: Возраст средний: '80-120'"
+    assert files["PP01.xlsx"]["warnings"][0] == "title, поле прапушчана: Сярэдні ўзрост: '80-120'"
     assert files["PP01.xlsx"]["warnings"][1].startswith("crn, радок 2")
     assert files["bad.xlsx"]["status"] == "error" and "штучная памылка" in files["bad.xlsx"]["error"]
     assert files["no_title.xlsx"]["status"] == "skipped"

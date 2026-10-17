@@ -87,7 +87,7 @@ class FilterCriteria:
 
 @dataclass
 class QueryResult:
-    """Вынік адвольнага SQL-запыту з акна «SQL Запыт»."""
+    """Вынік адвольнага SQL-запыту з акна «SQL-запыт»."""
     columns: list[str] = field(default_factory=list)
     rows: list[tuple] = field(default_factory=list)
     rowcount: int = 0

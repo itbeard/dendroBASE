@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Iterable, Mapping, Sequence
 
+from ..i18n import tr
 from ..reference import TitleField
 from .theme import PAD
 from .widgets import add_tooltip, format_value
@@ -35,7 +36,7 @@ class TitleForm:
             fields = list(fields)
             if not fields:
                 continue
-            box = ttk.LabelFrame(self.frame, text=title, style="Section.TLabelframe", padding=(PAD, 2, PAD, PAD))
+            box = ttk.LabelFrame(self.frame, text=tr(title), style="Section.TLabelframe", padding=(PAD, 2, PAD, PAD))
             box.grid(row=index, column=0, sticky="ew", padx=PAD, pady=(PAD, 0))
             for column in range(columns):
                 box.columnconfigure(column * 2 + 1, weight=1, uniform="field")
@@ -44,7 +45,7 @@ class TitleForm:
             for field in fields:
                 self.fields.append(field)
                 names.append(field.name)
-                label = ttk.Label(box, text=f"{field.label}{' *' if field.required else ''}:",
+                label = ttk.Label(box, text=f"{tr(field.label)}{' *' if field.required else ''}:",
                                   width=label_width, anchor="w")
                 if field.kind == "multiline":
                     if column:
@@ -61,7 +62,7 @@ class TitleForm:
                     if column >= columns:
                         row, column = row + 1, 0
                 widget.bind("<KeyRelease>", self._changed, add="+")
-                add_tooltip(label, field.hint)
+                add_tooltip(label, tr(field.hint))
                 self.widgets[field.name] = widget
                 self.labels[field.name] = label
                 if field.name in self.readonly:

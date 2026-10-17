@@ -9,6 +9,7 @@ import webbrowser
 from pathlib import Path
 from typing import TYPE_CHECKING, Sequence
 
+from .i18n import tr
 from .models import ProbePoint
 
 if TYPE_CHECKING:  # folium цягне pandas і numpy, таму імпартуецца толькі калі карта сапраўды будуецца
@@ -21,8 +22,8 @@ def popup_html(point: ProbePoint) -> str:
     years = f"{point.first_year or '?'}–{point.last_year or '?'}"
     return (
         f"<b>{html.escape(point.name)}</b><br>"
-        f"Парода: {html.escape(point.poroda or 'н/д')}<br>"
-        f"Гады: {years}"
+        + html.escape(tr("Парода: {species}").format(species=point.poroda or tr("н/д"))) + "<br>"
+        + html.escape(tr("Гады: {years}").format(years=years))
     )
 
 

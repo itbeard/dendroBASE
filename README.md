@@ -119,6 +119,20 @@ docker compose up -d --wait
 
 Лісты `crn` і `series` неабавязковыя: даныя можна дадаць пазней. Пры апрацоўцы файла апісанне ПП абнаўляецца; існуючыя значэнні CRN і SERIES замяняюцца толькі з опцыяй **Перапісваць існуючыя радкі CRN і SERIES**. Раней апрацаваныя нязменныя файлы звычайна прапускаюцца.
 
+### Логі і паведамленні пра памылкі
+
+Калі праграма паказвае акно **Нечаканая памылка**, поўны тэкст памылкі і месца ў кодзе, дзе яна ўзнікла, запісваюцца ў файл логаў. Дакладны шлях да файла паказвае меню **Даведка → Дзе файл логаў**. Звычайна ён знаходзіцца тут:
+
+- **Windows:** `C:\Users\<імя>\AppData\Local\DendroBASE\logs\dendrobase.log` — у адрасны радок Правадніка можна ўставіць `%LOCALAPPDATA%\DendroBASE\logs`.
+- **macOS:** `~/Library/Logs/DendroBASE/dendrobase.log`
+- **Linux:** `~/.local/state/dendrobase/logs/dendrobase.log`
+
+Калі файл дарастае да 1 МБ, ён перайменоўваецца ў `dendrobase.log.1` (захоўваюцца тры такія копіі), а запіс працягваецца ў новы файл. Імпарт з Excel, запушчаны з каманднага радка, піша ў асобны файл `excel_import.log` у той жа папцы.
+
+Налады логаў задаюцца ў `.env`: `DENDROBASE_LOG_DIR=` — іншая папка для файлаў логаў, `DENDROBASE_LOG_LEVEL=DEBUG` — больш падрабязныя запісы (па змаўчанні `INFO`).
+
+Калі паведамляеце распрацоўшчыку пра памылку, дашліце файл логаў цалкам або скапіруйце з яго апошнія радкі, пачынаючы са слова `Traceback`.
+
 ---
 
 ## English
@@ -237,3 +251,17 @@ Each `.xlsx` or `.xlsm` file represents one plot. The filename without its exten
 - **`series`** — years in the first column, followed by columns headed with series names and containing annual measurements.
 
 The `crn` and `series` worksheets are optional; you can add their data later. Processing a file updates its plot description; existing CRN and SERIES values are replaced only when **Overwrite existing CRN and SERIES rows** is selected. Previously processed files that have not changed are normally skipped.
+
+### Logs and error reports
+
+When the application shows an **Unexpected error** dialog, the full error text and the place in the code where it occurred are written to the log file. The exact path is shown under **Help → Log file location**. By default the file is here:
+
+- **Windows:** `C:\Users\<name>\AppData\Local\DendroBASE\logs\dendrobase.log` — you can paste `%LOCALAPPDATA%\DendroBASE\logs` into the Explorer address bar.
+- **macOS:** `~/Library/Logs/DendroBASE/dendrobase.log`
+- **Linux:** `~/.local/state/dendrobase/logs/dendrobase.log`
+
+When the file reaches 1 MB it is renamed to `dendrobase.log.1` (three such copies are kept) and logging continues in a fresh file. The Excel import run from the command line writes to a separate `excel_import.log` in the same folder.
+
+Logging is configured in `.env`: `DENDROBASE_LOG_DIR=` selects another folder for the log files, and `DENDROBASE_LOG_LEVEL=DEBUG` enables more detailed output (the default is `INFO`).
+
+When reporting a problem, attach the whole log file or copy its last lines starting from the word `Traceback`.

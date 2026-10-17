@@ -244,7 +244,7 @@ class DatabaseManager:
             return dict(zip(columns, row))
 
     def get_probe_points(self) -> list[ProbePoint]:
-        """ПП з каардынатамі для карты (нулявыя каардынаты лічацца незададзенымі)."""
+        """ПП з каардынатамі для мапы (нулявыя каардынаты лічацца незададзенымі)."""
         rows = self._fetchall(
             sql.SQL(
                 "SELECT {key}, shirota_grd, dolgota_grd, glavnaya_poroda, pervyy_god, posledniy_god, "

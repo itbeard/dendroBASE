@@ -1,4 +1,4 @@
-"""Укладка «Карта храналогій»: спіс ПП з каардынатамі і карта folium у браўзеры."""
+"""Укладка «Мапа храналогій»: спіс ПП з каардынатамі і мапа folium у браўзеры."""
 from __future__ import annotations
 
 import tkinter as tk
@@ -26,15 +26,15 @@ class MapTab:
 
         header = ttk.Frame(self.frame)
         header.pack(fill="x")
-        ttk.Label(header, text=tr("Карта храналогій"), style="Heading.TLabel").pack(side="left")
+        ttk.Label(header, text=tr("Мапа храналогій"), style="Heading.TLabel").pack(side="left")
         self.status = ttk.Label(header, text="", style="Subtitle.TLabel")
         self.status.pack(side="left", padx=(PAD * 2, 0))
 
         toolbar = ttk.Frame(self.frame)
         toolbar.pack(fill="x", pady=(6, 4))
-        open_button = ttk.Button(toolbar, text=tr("Адкрыць карту ў браўзеры"), command=self.open_map)
+        open_button = ttk.Button(toolbar, text=tr("Адкрыць мапу ў браўзеры"), command=self.open_map)
         open_button.pack(side="left")
-        add_tooltip(open_button, tr("Інтэрактыўная карта (падкладка OpenTopoMap на даных OpenStreetMap) з маркерамі ўсіх ПП, якія маюць каардынаты."))
+        add_tooltip(open_button, tr("Інтэрактыўная мапа (падкладка OpenTopoMap на даных OpenStreetMap) з маркерамі ўсіх ПП, якія маюць каардынаты."))
         ttk.Button(toolbar, text=tr("Захаваць як HTML…"), command=self.save_as).pack(side="left", padx=4)
         ttk.Button(toolbar, text=tr("Абнавіць спіс"), command=self.refresh).pack(side="left", padx=4)
         ttk.Label(self.frame, style="Hint.TLabel", wraplength=900, justify="left",
@@ -90,16 +90,16 @@ class MapTab:
             path = save_map(fmap, temp_map_path())
             opened = open_in_browser(path)
         except OSError as exc:
-            show_error(tr("Памылка"), tr("Не атрымалася стварыць карту:\n{error}").format(error=exc), exc)
+            show_error(tr("Памылка"), tr("Не атрымалася стварыць мапу:\n{error}").format(error=exc), exc)
             return
         if opened:
-            self.notify(tr("Карта з {count} ПП адкрыта ў браўзеры.").format(count=count), kind="ok")
+            self.notify(tr("Мапа з {count} ПП адкрыта ў браўзеры.").format(count=count), kind="ok")
         else:
-            show_info(tr("Карта захавана"), tr("Браўзер не адкрыўся. Адкрыйце файл уручную:\n{path}").format(path=path))
+            show_info(tr("Мапа захавана"), tr("Браўзер не адкрыўся. Адкрыйце файл уручную:\n{path}").format(path=path))
 
     def save_as(self) -> None:
         target = filedialog.asksaveasfilename(
-            title=tr("Захаваць карту"), defaultextension=".html",
+            title=tr("Захаваць мапу"), defaultextension=".html",
             filetypes=[("HTML", "*.html"), (tr("Усе файлы"), "*.*")], initialfile="dendrobase_map.html",
         )
         if not target:
@@ -110,6 +110,6 @@ class MapTab:
         try:
             save_map(fmap, Path(target))
         except OSError as exc:
-            show_error(tr("Памылка"), tr("Не атрымалася захаваць карту:\n{error}").format(error=exc), exc)
+            show_error(tr("Памылка"), tr("Не атрымалася захаваць мапу:\n{error}").format(error=exc), exc)
             return
-        self.notify(tr("Карта з {count} ПП захавана: {path}").format(count=count, path=target), kind="ok")
+        self.notify(tr("Мапа з {count} ПП захавана: {path}").format(count=count, path=target), kind="ok")

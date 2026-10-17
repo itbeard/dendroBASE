@@ -64,7 +64,7 @@ _EN: dict[str, str] = {
     "Экспарт…": "Export…",
     "Капіраваць": "Copy",
     "Абнавіць спіс": "Refresh list",
-    "Адкрыць карту ў браўзеры": "Open map in browser",
+    "Адкрыць мапу ў браўзеры": "Open map in browser",
     "Няма даных для капіравання.": "No data to copy.",
     "Няма даных для экспарту.": "No data to export.",
     "Не атрымалася захаваць файл:\n{error}": "Could not save the file:\n{error}",
@@ -158,7 +158,7 @@ _EN: dict[str, str] = {
     "Інфармацыя аб ПП": "Plot info",
     "CRN храналогія": "CRN chronology",
     "Фільтры і пошук": "Filters and search",
-    "Карта": "Map",
+    "Мапа": "Map",
     "Не атрымалася прачытаць спіс ПП:\n{error}": "Could not read the plot list:\n{error}",
     "{count} знойдзена": "{count} found",
     "Спачатку выберыце пробную плошчу са спіса.": "Select a sample plot from the list first.",
@@ -301,9 +301,9 @@ _EN: dict[str, str] = {
     "Фільтры: скапіравана радкоў: {count}": "Filters: rows copied: {count}",
     "Экспарт выбаркі": "Export results",
     "Выбарка: захавана радкоў: {count} у {path}": "Results: rows saved: {count} to {path}",
-    # --- укладка «Карта»
-    "Карта храналогій": "Chronology map",
-    "Інтэрактыўная карта (падкладка OpenTopoMap на даных OpenStreetMap) з маркерамі ўсіх ПП, якія маюць каардынаты.":
+    # --- укладка «Мапа»
+    "Мапа храналогій": "Chronology map",
+    "Інтэрактыўная мапа (падкладка OpenTopoMap на даных OpenStreetMap) з маркерамі ўсіх ПП, якія маюць каардынаты.":
         "Interactive map (OpenTopoMap tiles based on OpenStreetMap data) with markers for every plot that has coordinates.",
     "Захаваць як HTML…": "Save as HTML…",
     "Ніжэй толькі ПП з каардынатамі. Падвойны клік адкрывае ПП. "
@@ -315,13 +315,13 @@ _EN: dict[str, str] = {
     "Не атрымалася прачытаць каардынаты:\n{error}": "Could not read coordinates:\n{error}",
     "ПП з каардынатамі: {with_coords} з {total}": "Plots with coordinates: {with_coords} of {total}",
     "Няма пробных плошчаў з каардынатамі.": "No sample plots with coordinates.",
-    "Не атрымалася стварыць карту:\n{error}": "Could not create the map:\n{error}",
-    "Карта з {count} ПП адкрыта ў браўзеры.": "Map with {count} plots opened in the browser.",
-    "Карта захавана": "Map saved",
+    "Не атрымалася стварыць мапу:\n{error}": "Could not create the map:\n{error}",
+    "Мапа з {count} ПП адкрыта ў браўзеры.": "Map with {count} plots opened in the browser.",
+    "Мапа захавана": "Map saved",
     "Браўзер не адкрыўся. Адкрыйце файл уручную:\n{path}": "The browser did not open. Open the file manually:\n{path}",
-    "Захаваць карту": "Save map",
-    "Не атрымалася захаваць карту:\n{error}": "Could not save the map:\n{error}",
-    "Карта з {count} ПП захавана: {path}": "Map with {count} plots saved: {path}",
+    "Захаваць мапу": "Save map",
+    "Не атрымалася захаваць мапу:\n{error}": "Could not save the map:\n{error}",
+    "Мапа з {count} ПП захавана: {path}": "Map with {count} plots saved: {path}",
     # --- дыялогі
     "... і яшчэ {count}": "… and {count} more",
     "Даведка: расшыфроўка пародаў": "Reference: species abbreviations",

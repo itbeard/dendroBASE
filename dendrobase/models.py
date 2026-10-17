@@ -25,7 +25,7 @@ class SeriesValue(NamedTuple):
 
 
 class ProbePoint(NamedTuple):
-    """Пробная плошча з каардынатамі для карты."""
+    """Пробная плошча з каардынатамі для мапы."""
     name: str
     lat: float
     lon: float

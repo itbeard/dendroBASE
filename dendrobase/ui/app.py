@@ -158,7 +158,7 @@ class DendroApp:
         tools = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label=tr("Інструменты"), menu=tools)
         tools.add_command(label=tr("SQL-запыт…"), command=self.open_sql)
-        tools.add_command(label=tr("Адкрыць карту ў браўзеры"), command=lambda: self.map_tab.open_map())
+        tools.add_command(label=tr("Адкрыць мапу ў браўзеры"), command=lambda: self.map_tab.open_map())
         tools.add_separator()
         tools.add_command(label=tr("Налады…"), command=self.open_settings, accelerator="Ctrl+,")
 
@@ -236,7 +236,7 @@ class DendroApp:
         self.map_tab = MapTab(self.notebook, self.db, notify=self.notify, on_pick=self._pick_from_map)
         for tab, title in ((self.info_tab, tr("Інфармацыя аб ПП")), (self.crn_tab, tr("CRN храналогія")),
                            (self.series_tab, "SERIES"), (self.filter_tab, tr("Фільтры і пошук")),
-                           (self.map_tab, tr("Карта"))):
+                           (self.map_tab, tr("Мапа"))):
             self.notebook.add(tab.frame, text=f"  {title}  ")
 
     # -------------------------------------------------------------- паведамленні

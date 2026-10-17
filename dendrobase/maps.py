@@ -1,4 +1,4 @@
-"""Карта пробных плошчаў (folium) і яе адкрыццё ў браўзеры."""
+"""Мапа пробных плошчаў (folium) і яе адкрыццё ў браўзеры."""
 from __future__ import annotations
 
 import html
@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Sequence
 from .i18n import tr
 from .models import ProbePoint
 
-if TYPE_CHECKING:  # folium цягне pandas і numpy, таму імпартуецца толькі калі карта сапраўды будуецца
+if TYPE_CHECKING:  # folium цягне pandas і numpy, таму імпартуецца толькі калі мапа сапраўды будуецца
     import folium
 
 log = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ DEFAULT_TILES = "OpenTopoMap"
 
 def build_map(points: Sequence[ProbePoint], *, zoom_start: int = 7,
               tiles: str = DEFAULT_TILES) -> "folium.Map":
-    """Карта з маркерамі ўсіх ПП. Цэнтр: сярэдняе каардынат."""
+    """Мапа з маркерамі ўсіх ПП. Цэнтр: сярэдняе каардынат."""
     import folium  # лянівы імпарт, гл. каментар уверсе
 
     if not points:
@@ -54,18 +54,18 @@ def build_map(points: Sequence[ProbePoint], *, zoom_start: int = 7,
 
 
 def temp_map_path() -> Path:
-    """Унікальны шлях для часовай карты ў сістэмнай папцы temp."""
+    """Унікальны шлях для часовай мапы ў сістэмнай папцы temp."""
     directory = Path(tempfile.gettempdir()) / "dendrobase"
     directory.mkdir(parents=True, exist_ok=True)
     return directory / f"map_{time.strftime('%Y%m%d_%H%M%S')}.html"
 
 
 def save_map(fmap: "folium.Map", path: Path) -> Path:
-    """Захаваць карту ў HTML. Файл пішацца пасля закрыцця ўсіх дэскрыптараў, таму працуе і на Windows."""
+    """Захаваць мапу ў HTML. Файл пішацца пасля закрыцця ўсіх дэскрыптараў, таму працуе і на Windows."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fmap.save(str(path))
-    log.info("Карта захавана: %s", path)
+    log.info("Мапа захавана: %s", path)
     return path
 
 

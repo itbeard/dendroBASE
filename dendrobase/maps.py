@@ -26,8 +26,15 @@ def popup_html(point: ProbePoint) -> str:
     )
 
 
+# Падкладка па змаўчанні. Не "OpenStreetMap": tile.openstreetmap.org аддае заглушку «Access blocked»
+# на запыты браўзера без загалоўка Referer, а старонка, адкрытая як лакальны файл (file://), Referer
+# не дасылае ніколі. Не "CartoDB ...": CARTO з 2026 г. патрабуе API-ключ. OpenTopoMap пабудавана на тых жа
+# даных OSM, бясплатная (CC-BY-SA) і працуе з file://. Любая назва з xyzservices або URL-шаблон падыходзяць.
+DEFAULT_TILES = "OpenTopoMap"
+
+
 def build_map(points: Sequence[ProbePoint], *, zoom_start: int = 7,
-              tiles: str = "OpenStreetMap") -> "folium.Map":
+              tiles: str = DEFAULT_TILES) -> "folium.Map":
     """Карта з маркерамі ўсіх ПП. Цэнтр: сярэдняе каардынат."""
     import folium  # лянівы імпарт, гл. каментар уверсе
 

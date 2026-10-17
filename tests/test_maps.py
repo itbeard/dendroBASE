@@ -19,6 +19,15 @@ def test_popup_contains_species_and_years():
     assert "н/д" in popup_html(ProbePoint("a", 52.0, 26.0))
 
 
+def test_default_tiles_work_from_local_file(tmp_path):
+    # tile.openstreetmap.org аддае заглушку «Access blocked» на запыты без Referer (file:// яго не дасылае),
+    # а CARTO без API-ключа аддае «API KEY REQUIRED»
+    html = save_map(build_map([ProbePoint("a", 52.0, 26.0)]), tmp_path / "map.html").read_text(encoding="utf-8")
+    assert "tile.openstreetmap.org" not in html
+    assert "cartocdn.com" not in html
+    assert "tile.opentopomap.org" in html
+
+
 def test_build_map_requires_points():
     with pytest.raises(ValueError):
         build_map([])

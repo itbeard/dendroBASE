@@ -33,7 +33,7 @@ class MapTab:
         toolbar.pack(fill="x", pady=(6, 4))
         open_button = ttk.Button(toolbar, text="Адкрыць карту ў браўзеры", command=self.open_map)
         open_button.pack(side="left")
-        add_tooltip(open_button, "Інтэрактыўная карта OpenStreetMap з маркерамі ўсіх ПП, якія маюць каардынаты.")
+        add_tooltip(open_button, "Інтэрактыўная карта (падкладка OpenTopoMap на даных OpenStreetMap) з маркерамі ўсіх ПП, якія маюць каардынаты.")
         ttk.Button(toolbar, text="Захаваць як HTML…", command=self.save_as).pack(side="left", padx=4)
         ttk.Button(toolbar, text="Абнавіць спіс", command=self.refresh).pack(side="left", padx=4)
         ttk.Label(self.frame, style="Hint.TLabel", wraplength=900, justify="left",

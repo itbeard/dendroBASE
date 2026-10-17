@@ -318,3 +318,34 @@ def test_main_reports_connection_failure(tmp_path, monkeypatch, quiet_messages):
     assert main() == 1
     assert quiet_messages[-1][0] == "Няма злучэння з базай даных"
     assert ".env" in quiet_messages[-1][1]
+
+
+def test_tooltip_hides_on_click_enter_and_global_events(root):
+    from dendrobase.ui.widgets import Tooltip, _ACTIVE_TOOLTIPS, hide_all_tooltips
+    root.deiconify()
+    root.geometry("300x200+0+0")
+    button = tk.Button(root, text="Кнопка")
+    button.pack()
+    root.update()
+    tooltip = Tooltip(button, "падказка", delay_ms=1)
+    tooltip._show()
+    assert tooltip.visible and tooltip in _ACTIVE_TOOLTIPS
+    tooltip.hide()
+    assert not tooltip.visible and tooltip not in _ACTIVE_TOOLTIPS
+    tooltip._show()
+    hide_all_tooltips()  # тое, што робіць любы клік або клавіша ў акне
+    assert not tooltip.visible
+    tooltip._show()
+    root.update()
+    button.event_generate("<ButtonPress-1>")
+    assert not tooltip.visible
+    root.withdraw()
+
+
+def test_gui_startup_does_not_import_folium_or_pandas():
+    import subprocess
+    import sys
+    code = ("import sys, dendrobase.ui.app; "
+            "print(sorted(m for m in ('folium', 'pandas', 'numpy') if m in sys.modules))")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "[]"

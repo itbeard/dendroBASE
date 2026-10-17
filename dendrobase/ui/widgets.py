@@ -92,41 +92,74 @@ class ScrollableFrame(ttk.Frame):
 
 
 # ------------------------------------------------------------------ падказкі
+_ACTIVE_TOOLTIPS: set["Tooltip"] = set()
+
+
+def hide_all_tooltips() -> None:
+    for tooltip in list(_ACTIVE_TOOLTIPS):
+        tooltip.hide()
+
+
+def _bind_global_tooltip_hide(widget: tk.Misc) -> None:
+    """Любы клік, клавіша або змена фокусу хаваюць усе падказкі: страховка ад «завіслай» падказкі."""
+    app_root = widget.nametowidget(".")
+    if getattr(app_root, "_dendrobase_tooltips_bound", False):
+        return
+    for sequence in ("<ButtonPress>", "<Key>", "<FocusOut>", "<Unmap>"):
+        app_root.bind_all(sequence, lambda _e: hide_all_tooltips(), add="+")
+    setattr(app_root, "_dendrobase_tooltips_bound", True)
+
+
 class Tooltip:
-    """Усплывальная падказка пры навядзенні курсора."""
+    """Усплывальная падказка каля курсора.
+
+    Паказваецца з затрымкай, хаваецца пры выхадзе курсора, кліку, клавішы, уваходзе курсора
+    ў само акенца падказкі і праз AUTO_HIDE_MS. Так яна ніколі не перакрывае суседнія кнопкі надоўга.
+    """
+
+    AUTO_HIDE_MS = 4000
 
     def __init__(self, widget: tk.Widget, text: str, delay_ms: int = 600) -> None:
         self.widget = widget
         self.text = text
         self.delay_ms = delay_ms
         self._after: str | None = None
+        self._auto_hide: str | None = None
         self._tip: tk.Toplevel | None = None
         widget.bind("<Enter>", self._schedule, add="+")
-        widget.bind("<Leave>", self._hide, add="+")
-        widget.bind("<ButtonPress>", self._hide, add="+")
+        widget.bind("<Motion>", self._on_motion, add="+")
+        for sequence in ("<Leave>", "<ButtonPress>", "<Destroy>"):
+            widget.bind(sequence, self.hide, add="+")
+        _bind_global_tooltip_hide(widget)
 
-    def _schedule(self, _event: tk.Event) -> None:
-        self._cancel()
+    def _on_motion(self, event: tk.Event) -> None:
+        if self._tip is None:
+            self._schedule(event)
+
+    def _schedule(self, _event: tk.Event | None = None) -> None:
+        self._cancel_timer()
         self._after = self.widget.after(self.delay_ms, self._show)
 
-    def _cancel(self) -> None:
-        if self._after is not None:
-            try:
-                self.widget.after_cancel(self._after)
-            except tk.TclError:
-                pass
-            self._after = None
+    def _cancel_timer(self) -> None:
+        for name in ("_after", "_auto_hide"):
+            handle = getattr(self, name)
+            if handle is not None:
+                try:
+                    self.widget.after_cancel(handle)
+                except tk.TclError:
+                    pass
+                setattr(self, name, None)
 
     def _show(self) -> None:
         self._after = None
         if self._tip is not None or not self.text:
             return
         try:
-            x = self.widget.winfo_rootx() + 12
-            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+            if not self.widget.winfo_exists() or not self.widget.winfo_ismapped():
+                return
+            x, y = self.widget.winfo_pointerxy()
             tip = tk.Toplevel(self.widget)
             tip.wm_overrideredirect(True)
-            tip.wm_geometry(f"+{x}+{y}")
             try:
                 tip.attributes("-topmost", True)
             except tk.TclError:
@@ -134,18 +167,34 @@ class Tooltip:
             tk.Label(tip, text=self.text, justify="left", background=PALETTE["tooltip_bg"],
                      foreground=PALETTE["text"], relief="solid", borderwidth=1, padx=6, pady=3,
                      font=app_font(size_delta=-1), wraplength=340).pack()
+            tip.update_idletasks()
+            width, height = tip.winfo_reqwidth(), tip.winfo_reqheight()
+            x = min(x + 14, self.widget.winfo_screenwidth() - width - 8)
+            y = y + 20
+            if y + height > self.widget.winfo_screenheight() - 8:
+                y = y - height - 28
+            tip.wm_geometry(f"+{max(0, x)}+{max(0, y)}")
+            tip.bind("<Enter>", self.hide)
+            tip.bind("<ButtonPress>", self.hide)
         except tk.TclError:
             return
         self._tip = tip
+        _ACTIVE_TOOLTIPS.add(self)
+        self._auto_hide = self.widget.after(self.AUTO_HIDE_MS, self.hide)
 
-    def _hide(self, _event: tk.Event | None = None) -> None:
-        self._cancel()
+    def hide(self, _event: tk.Event | None = None) -> None:
+        self._cancel_timer()
+        _ACTIVE_TOOLTIPS.discard(self)
         if self._tip is not None:
             try:
                 self._tip.destroy()
             except tk.TclError:
                 pass
             self._tip = None
+
+    @property
+    def visible(self) -> bool:
+        return self._tip is not None
 
 
 def add_tooltip(widget: tk.Widget, text: str) -> None:

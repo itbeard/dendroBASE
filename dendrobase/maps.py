@@ -7,11 +7,12 @@ import tempfile
 import time
 import webbrowser
 from pathlib import Path
-from typing import Sequence
-
-import folium
+from typing import TYPE_CHECKING, Sequence
 
 from .models import ProbePoint
+
+if TYPE_CHECKING:  # folium цягне pandas і numpy, таму імпартуецца толькі калі карта сапраўды будуецца
+    import folium
 
 log = logging.getLogger(__name__)
 
@@ -26,8 +27,10 @@ def popup_html(point: ProbePoint) -> str:
 
 
 def build_map(points: Sequence[ProbePoint], *, zoom_start: int = 7,
-              tiles: str = "OpenStreetMap") -> folium.Map:
+              tiles: str = "OpenStreetMap") -> "folium.Map":
     """Карта з маркерамі ўсіх ПП. Цэнтр: сярэдняе каардынат."""
+    import folium  # лянівы імпарт, гл. каментар уверсе
+
     if not points:
         raise ValueError("Няма пробных плошчаў з каардынатамі")
     center_lat = sum(p.lat for p in points) / len(points)
@@ -49,7 +52,7 @@ def temp_map_path() -> Path:
     return directory / f"map_{time.strftime('%Y%m%d_%H%M%S')}.html"
 
 
-def save_map(fmap: folium.Map, path: Path) -> Path:
+def save_map(fmap: "folium.Map", path: Path) -> Path:
     """Захаваць карту ў HTML. Файл пішацца пасля закрыцця ўсіх дэскрыптараў, таму працуе і на Windows."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

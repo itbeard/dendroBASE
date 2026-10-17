@@ -16,7 +16,7 @@ from psycopg2 import sql
 from psycopg2.extensions import connection as PgConnection, cursor as PgCursor
 
 from .config import DatabaseSettings
-from .models import CrnRow, FilterCriteria, ProbePoint, QueryResult, SeriesMatrix, SeriesValue
+from .models import CrnRow, FilterCriteria, ProbePoint, ProbeSummary, QueryResult, SeriesMatrix, SeriesValue
 from .parsing import natural_key
 from .reference import PROBE_KEY, READONLY_COLUMNS, ZONA_NORMALIZATION
 
@@ -207,6 +207,28 @@ class DatabaseManager:
             (f"%{text}%",),
         )
         return [row[0] for row in rows]
+
+    def list_probes(self, search: str = "") -> list[ProbeSummary]:
+        """Кароткія звесткі пра ПП для спіса: парода, гады шкалы, колькасць дрэў, ці ёсць каардынаты."""
+        params: list[object] = []
+        where = sql.SQL("")
+        if search:
+            where = sql.SQL(" WHERE {key} ILIKE %s").format(key=sql.Identifier(PROBE_KEY))
+            params.append(f"%{search}%")
+        query = sql.SQL(
+            "SELECT {key}, glavnaya_poroda, drevesnaya_poroda, pervyy_god, posledniy_god, "
+            "kolichestvo_derevev_v_shkale_sht, "
+            "(shirota_grd IS NOT NULL AND dolgota_grd IS NOT NULL AND shirota_grd <> 0 AND dolgota_grd <> 0) "
+            "FROM title{where} ORDER BY {key}"
+        ).format(key=sql.Identifier(PROBE_KEY), where=where)
+
+        def as_int(value: object) -> int | None:
+            return int(value) if value is not None else None  # type: ignore[call-overload]
+
+        return [
+            ProbeSummary(name, poroda, species, as_int(first), as_int(last), as_int(trees), bool(coords))
+            for name, poroda, species, first, last, trees, coords in self._fetchall(query, params)
+        ]
 
     def get_probe_info(self, probe: str) -> dict[str, object] | None:
         with self.transaction() as cur:

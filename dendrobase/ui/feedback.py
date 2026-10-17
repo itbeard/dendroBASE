@@ -32,6 +32,13 @@ def ask_yes_no(title: str, message: str, parent: tk.Misc | None = None) -> bool:
     return answer
 
 
+def ask_yes_no_cancel(title: str, message: str, parent: tk.Misc | None = None) -> bool | None:
+    """Так / Не / Адмена. Вяртае True, False або None (адмена)."""
+    answer = messagebox.askyesnocancel(title, message, parent=parent)
+    log.info("%s: %s -> %s", title, message, {True: "так", False: "не", None: "адмена"}[answer])
+    return answer
+
+
 def install_exception_handler(root: tk.Tk) -> None:
     """Неапрацаваныя выключэнні ў апрацоўшчыках Tk ідуць у лог і ў акно, а не ў stderr."""
 

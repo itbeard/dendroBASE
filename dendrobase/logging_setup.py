@@ -2,24 +2,14 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from .paths import default_log_dir  # noqa: F401  (рээкспарт для сумяшчальнасці)
+
 LOG_FORMAT = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
 _HANDLER_TAG = "_dendrobase_handler"
-
-
-def default_log_dir() -> Path:
-    """Стандартная папка логаў для бягучай АС."""
-    if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
-        return base / "DendroBASE" / "logs"
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Logs" / "DendroBASE"
-    base = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
-    return base / "dendrobase" / "logs"
 
 
 def _make_console_safe() -> None:

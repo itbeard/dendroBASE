@@ -2,7 +2,7 @@ import re
 
 from dendrobase.config import PROJECT_ROOT
 from dendrobase.reference import (EXCEL_PARAM_MAPPING, FIELD_BY_NAME, GEO_ZONA_LIST, PORODA_DICT, PORODA_LIST,
-                                  TITLE_FIELDS, ZONA_NORMALIZATION, field_kind)
+                                  PROBE_KEY, TITLE_FIELDS, TITLE_SECTIONS, ZONA_NORMALIZATION, field_kind)
 
 
 def schema_title_columns() -> set[str]:
@@ -44,3 +44,14 @@ def test_zone_normalization_targets_are_in_zone_list():
 def test_field_kind_for_unknown_column_is_text():
     assert field_kind("geom") == "text"
     assert field_kind("shirota_grd") == "number"
+
+
+def test_sections_cover_every_field_once():
+    names = [f.name for _, fields in TITLE_SECTIONS for f in fields]
+    assert names == [f.name for f in TITLE_FIELDS]
+    assert len(names) == len(set(names))
+    assert all(title and fields for title, fields in TITLE_SECTIONS)
+
+
+def test_only_probe_key_is_required():
+    assert [f.name for f in TITLE_FIELDS if f.required] == [PROBE_KEY]

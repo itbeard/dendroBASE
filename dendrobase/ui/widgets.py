@@ -1,18 +1,21 @@
-"""Дапаможныя віджэты: пракручвальная рамка, табліцы, шрыфты, буфер абмену.
+"""Дапаможныя віджэты: пракрутка, падказкі, поле з плейсхолдэрам, табліцы з сартаваннем, буфер абмену.
 
-Усё, што залежыць ад платформы (кола мышы, буфер), сабрана тут.
+Усё, што залежыць ад платформы (кола мышы, буфер, файлы), сабрана тут.
 """
 from __future__ import annotations
 
+import csv
 import sys
 import tkinter as tk
 from datetime import date, datetime
 from decimal import Decimal
-from tkinter import font as tkfont, ttk
-from typing import Iterable, Sequence
+from pathlib import Path
+from tkinter import ttk
+from typing import Callable, Iterable, Mapping, Sequence
+
+from .theme import PALETTE, app_font
 
 _WHEEL_CANVASES: set[tk.Canvas] = set()
-_FONTS: dict[str, tkfont.Font] = {}
 
 
 # ----------------------------------------------------------------- кола мышы
@@ -84,27 +87,114 @@ class ScrollableFrame(ttk.Frame):
     def _on_canvas_configure(self, event: tk.Event) -> None:
         self.canvas.itemconfigure(self._window, width=event.width)
 
-
-# -------------------------------------------------------------------- шрыфты
-def app_font(*, bold: bool = False, size_delta: int = 0, fixed: bool = False) -> tkfont.Font:
-    """Сістэмны шрыфт Tk з мадыфікацыямі. Аб'екты кэшуюцца, бо Tk выдаляе шрыфт разам з аб'ектам."""
-    key = f"{'fixed' if fixed else 'default'}:{bold}:{size_delta}"
-    if key not in _FONTS:
-        font = tkfont.nametofont("TkFixedFont" if fixed else "TkDefaultFont").copy()
-        options: dict[str, object] = {}
-        if bold:
-            options["weight"] = "bold"
-        if size_delta:
-            options["size"] = abs(int(font.cget("size"))) + size_delta
-        if options:
-            font.configure(**options)
-        _FONTS[key] = font
-    return _FONTS[key]
+    def scroll_to_top(self) -> None:
+        self.canvas.yview_moveto(0)
 
 
-# -------------------------------------------------------------------- табліцы
+# ------------------------------------------------------------------ падказкі
+class Tooltip:
+    """Усплывальная падказка пры навядзенні курсора."""
+
+    def __init__(self, widget: tk.Widget, text: str, delay_ms: int = 600) -> None:
+        self.widget = widget
+        self.text = text
+        self.delay_ms = delay_ms
+        self._after: str | None = None
+        self._tip: tk.Toplevel | None = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+
+    def _schedule(self, _event: tk.Event) -> None:
+        self._cancel()
+        self._after = self.widget.after(self.delay_ms, self._show)
+
+    def _cancel(self) -> None:
+        if self._after is not None:
+            try:
+                self.widget.after_cancel(self._after)
+            except tk.TclError:
+                pass
+            self._after = None
+
+    def _show(self) -> None:
+        self._after = None
+        if self._tip is not None or not self.text:
+            return
+        try:
+            x = self.widget.winfo_rootx() + 12
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+            tip = tk.Toplevel(self.widget)
+            tip.wm_overrideredirect(True)
+            tip.wm_geometry(f"+{x}+{y}")
+            try:
+                tip.attributes("-topmost", True)
+            except tk.TclError:
+                pass
+            tk.Label(tip, text=self.text, justify="left", background=PALETTE["tooltip_bg"],
+                     foreground=PALETTE["text"], relief="solid", borderwidth=1, padx=6, pady=3,
+                     font=app_font(size_delta=-1), wraplength=340).pack()
+        except tk.TclError:
+            return
+        self._tip = tip
+
+    def _hide(self, _event: tk.Event | None = None) -> None:
+        self._cancel()
+        if self._tip is not None:
+            try:
+                self._tip.destroy()
+            except tk.TclError:
+                pass
+            self._tip = None
+
+
+def add_tooltip(widget: tk.Widget, text: str) -> None:
+    if text:
+        Tooltip(widget, text)
+
+
+class PlaceholderEntry(ttk.Entry):
+    """Поле ўводу з шэрай падказкай, пакуль яно пустое."""
+
+    def __init__(self, master: tk.Misc, placeholder: str = "", **kwargs) -> None:
+        super().__init__(master, **kwargs)
+        self.placeholder = placeholder
+        self._showing = False
+        self.bind("<FocusIn>", self._on_focus_in, add="+")
+        self.bind("<FocusOut>", self._on_focus_out, add="+")
+        self._show_placeholder()
+
+    def _show_placeholder(self) -> None:
+        if self.placeholder and not super().get():
+            self._showing = True
+            super().insert(0, self.placeholder)
+            self.configure(foreground=PALETTE["muted"])
+
+    def _on_focus_in(self, _event: tk.Event) -> None:
+        if self._showing:
+            super().delete(0, "end")
+            self.configure(foreground="")
+            self._showing = False
+
+    def _on_focus_out(self, _event: tk.Event) -> None:
+        self._show_placeholder()
+
+    def get(self) -> str:  # type: ignore[override]
+        return "" if self._showing else super().get()
+
+    def set_text(self, text: str) -> None:
+        super().delete(0, "end")
+        self._showing = False
+        self.configure(foreground="")
+        if text:
+            super().insert(0, text)
+        elif self.focus_get() is not self:
+            self._show_placeholder()
+
+
+# -------------------------------------------------------------------- фармат
 def format_value(value: object) -> str:
-    """Паказ значэння з БД у табліцы або полі: None -> пуста, даты дд.мм.гггг, 85.0 -> 85."""
+    """Паказ значэння з БД у полі або табліцы: None -> пуста, даты дд.мм.гггг, 85.0 -> 85."""
     if value is None:
         return ""
     if isinstance(value, bool):
@@ -120,14 +210,37 @@ def format_value(value: object) -> str:
     return str(value)
 
 
-def make_treeview(parent: tk.Misc, columns: Sequence[str] = (), *, height: int | None = None,
-                  horizontal: bool = True) -> ttk.Treeview:
-    """Treeview з палосамі пракруткі ў асобнай рамцы. Рамка даступная як tree.master."""
+def format_number(value: object, decimals: int = 3) -> str:
+    """Лік з фіксаванай колькасцю знакаў, каб слупок у табліцы выраўноўваўся па коме."""
+    if value is None or value == "":
+        return ""
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return str(value)
+    if decimals <= 0:
+        return str(int(round(number)))
+    return f"{number:.{decimals}f}"
+
+
+# -------------------------------------------------------------------- табліцы
+def make_treeview(parent: tk.Misc, columns: Sequence[str] = (), *, numeric: Mapping[str, int] | None = None,
+                  height: int | None = None, horizontal: bool = True, sortable: bool = True,
+                  selectmode: str = "extended") -> ttk.Treeview:
+    """Treeview з палосамі пракруткі, зебрай і сартаваннем па клiку на загаловак.
+
+    numeric: {слупок: колькасць знакаў пасля коскі}; такія слупкі выраўноўваюцца ўправа.
+    Рамка з палосамі пракруткі даступная як tree.master.
+    """
     frame = ttk.Frame(parent)
-    options: dict[str, object] = {"show": "headings"}
+    options: dict[str, object] = {"show": "headings", "selectmode": selectmode}
     if height is not None:
         options["height"] = height
     tree = ttk.Treeview(frame, **options)
+    tree.numeric_columns = dict(numeric or {})  # type: ignore[attr-defined]
+    tree.sortable = sortable  # type: ignore[attr-defined]
+    tree.sort_state = (None, False)  # type: ignore[attr-defined]
+    tree.tag_configure("odd", background=PALETTE["stripe"])
     vertical = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
     tree.configure(yscrollcommand=vertical.set)
     if horizontal:
@@ -141,12 +254,28 @@ def make_treeview(parent: tk.Misc, columns: Sequence[str] = (), *, height: int |
     return tree
 
 
-def set_columns(tree: ttk.Treeview, columns: Sequence[str], *, width: int = 100, stretch: bool = True) -> None:
+def set_columns(tree: ttk.Treeview, columns: Sequence[str], *, width: int = 100, stretch: bool = True,
+                numeric: Mapping[str, int] | None = None) -> None:
     clear_tree(tree)
+    if numeric is not None:
+        tree.numeric_columns = dict(numeric)  # type: ignore[attr-defined]
+    numeric_columns = getattr(tree, "numeric_columns", {})
     tree["columns"] = list(columns)
     for column in columns:
-        tree.heading(column, text=str(column))
-        tree.column(column, width=width, minwidth=40, stretch=stretch, anchor="w")
+        anchor = "e" if column in numeric_columns else "w"
+        command: Callable[[], None] | str = ""
+        if getattr(tree, "sortable", False):
+            command = (lambda col=column: sort_tree(tree, col))
+        tree.heading(column, text=str(column), anchor=anchor, command=command)
+        tree.column(column, width=width, minwidth=40, stretch=stretch, anchor=anchor)
+    tree.sort_state = (None, False)  # type: ignore[attr-defined]
+
+
+def _cell_text(tree: ttk.Treeview, column: str, value: object) -> str:
+    numeric_columns = getattr(tree, "numeric_columns", {})
+    if column in numeric_columns and isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
+        return format_number(value, numeric_columns[column])
+    return format_value(value)
 
 
 def clear_tree(tree: ttk.Treeview) -> None:
@@ -154,24 +283,75 @@ def clear_tree(tree: ttk.Treeview) -> None:
 
 
 def fill_tree(tree: ttk.Treeview, rows: Iterable[Sequence[object]]) -> int:
+    columns = list(tree["columns"])
     count = 0
     for row in rows:
-        tree.insert("", "end", values=[format_value(v) for v in row])
+        values = [_cell_text(tree, column, value) for column, value in zip(columns, row)]
+        tree.insert("", "end", values=values, tags=("odd",) if count % 2 else ())
         count += 1
     return count
+
+
+def restripe(tree: ttk.Treeview) -> None:
+    for index, item in enumerate(tree.get_children()):
+        tree.item(item, tags=("odd",) if index % 2 else ())
+
+
+def _sort_key(text: str) -> tuple[int, float | str]:
+    if text == "":
+        return (2, "")
+    try:
+        return (0, float(text.replace(",", ".")))
+    except ValueError:
+        return (1, text.lower())
+
+
+def sort_tree(tree: ttk.Treeview, column: str, reverse: bool | None = None) -> None:
+    """Сартаваць радкі па слупку; паўторны клік мяняе напрамак. Стрэлка ў загалоўку паказвае стан."""
+    previous_column, previous_reverse = getattr(tree, "sort_state", (None, False))
+    if reverse is None:
+        reverse = not previous_reverse if previous_column == column else False
+    items = [(_sort_key(tree.set(item, column)), item) for item in tree.get_children()]
+    items.sort(key=lambda pair: pair[0], reverse=reverse)
+    for index, (_key, item) in enumerate(items):
+        tree.move(item, "", index)
+    for name in tree["columns"]:
+        base = str(tree.heading(name, "text")).rstrip(" ▲▼")
+        tree.heading(name, text=base + (" ▼" if reverse else " ▲") if name == column else base)
+    tree.sort_state = (column, reverse)  # type: ignore[attr-defined]
+    restripe(tree)
 
 
 def tree_rows(tree: ttk.Treeview) -> list[list[str]]:
     return [[str(v) for v in tree.item(item, "values")] for item in tree.get_children()]
 
 
+def tree_headers(tree: ttk.Treeview) -> list[str]:
+    return [str(tree.heading(c, "text")).rstrip(" ▲▼") for c in tree["columns"]]
+
+
 def tree_to_tsv(tree: ttk.Treeview) -> str:
     """Табліца як тэкст з табуляцыямі: уставляецца ў Excel без дадатковых крокаў."""
-    header = [str(c) for c in tree["columns"]]
-    lines = ["\t".join(header)] + ["\t".join(row) for row in tree_rows(tree)]
+    lines = ["\t".join(tree_headers(tree))] + ["\t".join(row) for row in tree_rows(tree)]
     return "\n".join(lines)
 
 
+def save_tree_file(tree: ttk.Treeview, path: Path) -> int:
+    """Захаваць табліцу ў файл: .csv з коскай або .tsv/.txt з табуляцыямі, UTF-8 з BOM для Excel."""
+    path = Path(path)
+    delimiter = "," if path.suffix.lower() == ".csv" else "\t"
+    rows = tree_rows(tree)
+    with path.open("w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.writer(handle, delimiter=delimiter)
+        writer.writerow(tree_headers(tree))
+        writer.writerows(rows)
+    return len(rows)
+
+
+EXPORT_FILETYPES = [("CSV (коска)", "*.csv"), ("Тэкст з табуляцыямі", "*.tsv"), ("Усе файлы", "*.*")]
+
+
+# ------------------------------------------------------------------ буфер
 def copy_to_clipboard(widget: tk.Misc, text: str) -> None:
     widget.clipboard_clear()
     widget.clipboard_append(text)

@@ -1,35 +1,63 @@
-"""Укладка «SERIES (Матрыца)»: індывідуальныя серыі ў выглядзе матрыцы год x серыя."""
+"""Укладка «SERIES (Матрыца)»: графік серый з вылучэннем адной і матрыца год x серыя."""
 from __future__ import annotations
 
-from tkinter import ttk
+from pathlib import Path
+from tkinter import filedialog, ttk
+from typing import Callable
 
 from ..db import DatabaseError, DatabaseManager
+from ..models import SeriesMatrix
 from ..parsing import parse_int
-from .feedback import show_error, show_warning
-from .widgets import copy_to_clipboard, fill_tree, make_treeview, set_columns, tree_to_tsv
+from .chart import LineChart
+from .feedback import show_error
+from .theme import PAD, PALETTE
+from .widgets import (EXPORT_FILETYPES, add_tooltip, copy_to_clipboard, fill_tree, make_treeview, save_tree_file,
+                      set_columns, tree_to_tsv)
+
+Notify = Callable[..., None]
 
 
 class SeriesTab:
-    def __init__(self, notebook: ttk.Notebook, db: DatabaseManager) -> None:
+    def __init__(self, notebook: ttk.Notebook, db: DatabaseManager, notify: Notify | None = None) -> None:
         self.db = db
+        self.notify: Notify = notify or (lambda text, **kwargs: None)
         self.probe: str | None = None
-        self.frame = ttk.Frame(notebook)
+        self.matrix: SeriesMatrix | None = None
+        self.frame = ttk.Frame(notebook, padding=(PAD, PAD, PAD, 0))
 
-        filters = ttk.Frame(self.frame)
-        filters.pack(fill="x", padx=6, pady=6)
-        ttk.Label(filters, text="Год з:").pack(side="left", padx=4)
-        self.year_from = ttk.Entry(filters, width=8)
+        header = ttk.Frame(self.frame)
+        header.pack(fill="x")
+        ttk.Label(header, text="Індывідуальныя серыі", style="Heading.TLabel").pack(side="left")
+        self.info = ttk.Label(header, text="", style="Subtitle.TLabel")
+        self.info.pack(side="left", padx=(PAD * 2, 0))
+
+        toolbar = ttk.Frame(self.frame)
+        toolbar.pack(fill="x", pady=(6, 4))
+        ttk.Label(toolbar, text="Гады з").pack(side="left")
+        self.year_from = ttk.Entry(toolbar, width=7)
         self.year_from.pack(side="left", padx=4)
-        ttk.Label(filters, text="Год па:").pack(side="left", padx=4)
-        self.year_to = ttk.Entry(filters, width=8)
+        ttk.Label(toolbar, text="па").pack(side="left")
+        self.year_to = ttk.Entry(toolbar, width=7)
         self.year_to.pack(side="left", padx=4)
-        ttk.Button(filters, text="Паказаць матрыцу", command=self.load).pack(side="left", padx=8)
-        ttk.Button(filters, text="Капіраваць у буфер", command=self.copy).pack(side="right", padx=4)
-        self.info = ttk.Label(filters, text="", foreground="blue")
-        self.info.pack(side="right", padx=8)
+        for entry in (self.year_from, self.year_to):
+            entry.bind("<Return>", lambda _e: self.load())
+        ttk.Button(toolbar, text="Прымяніць", command=self.load).pack(side="left", padx=(4, 0))
+        ttk.Button(toolbar, text="Усе гады", command=self.clear_filter).pack(side="left", padx=4)
+        ttk.Separator(toolbar, orient="vertical").pack(side="left", fill="y", padx=PAD, pady=2)
+        ttk.Label(toolbar, text="Вылучыць серыю:").pack(side="left")
+        self.highlight = ttk.Combobox(toolbar, width=10, state="readonly", values=[""])
+        self.highlight.pack(side="left", padx=4)
+        self.highlight.bind("<<ComboboxSelected>>", lambda _e: self._update_chart())
+        add_tooltip(self.highlight, "Вылучаная серыя малюецца тоўстай чырвонай лініяй, астатнія шэрыя.")
+        ttk.Button(toolbar, text="Экспарт…", command=self.export).pack(side="right")
+        ttk.Button(toolbar, text="Капіраваць", command=self.copy).pack(side="right", padx=4)
 
-        self.tree = make_treeview(self.frame)
-        self.tree.master.pack(fill="both", expand=True, padx=6, pady=4)
+        paned = ttk.PanedWindow(self.frame, orient="vertical")
+        paned.pack(fill="both", expand=True, pady=(0, PAD))
+        self.chart = LineChart(paned, height=220)
+        paned.add(self.chart, weight=0)
+        self.tree = make_treeview(paned)
+        paned.add(self.tree.master, weight=1)
 
     def set_probe(self, probe: str | None) -> None:
         self.probe = probe
@@ -37,29 +65,78 @@ class SeriesTab:
 
     def load(self) -> None:
         set_columns(self.tree, [])
-        self.info.configure(text="")
+        self.matrix = None
+        self.info.configure(text="", style="Subtitle.TLabel")
         if not self.probe:
+            self.chart.clear()
+            self.highlight.configure(values=[""])
+            self.highlight.set("")
             return
         try:
             year_from, year_to = parse_int(self.year_from.get()), parse_int(self.year_to.get())
         except ValueError:
-            show_warning("Папярэджанне", "Гады фільтра павінны быць цэлымі лікамі.")
+            self.info.configure(text="Гады фільтра павінны быць цэлымі лікамі.", style="Error.TLabel")
             return
         try:
-            matrix = self.db.get_series_matrix(self.probe, year_from, year_to)
+            self.matrix = self.db.get_series_matrix(self.probe, year_from, year_to)
         except DatabaseError as exc:
             show_error("Памылка", f"Не атрымалася прачытаць SERIES:\n{exc}", exc)
             return
-        if matrix is None:
+        if self.matrix is None:
             self.info.configure(text="Няма даных")
+            self.chart.clear()
+            self.highlight.configure(values=[""])
+            self.highlight.set("")
             return
-        set_columns(self.tree, ["year", *matrix.series], width=80)
+        matrix = self.matrix
+        set_columns(self.tree, ["year", *matrix.series], width=80,
+                    numeric={"year": 0, **{name: 3 for name in matrix.series}})
         fill_tree(self.tree, ([year, *matrix.row(year)] for year in matrix.years))
-        self.info.configure(text=f"Гадоў: {len(matrix.years)}, серый: {len(matrix.series)}")
+        self.info.configure(text=f"{len(matrix.years)} гадоў  ·  {len(matrix.series)} серый  ·  "
+                                 f"{matrix.years[0]}–{matrix.years[-1]}")
+        current = self.highlight.get()
+        self.highlight.configure(values=[""] + matrix.series)
+        self.highlight.set(current if current in matrix.series else "")
+        self._update_chart()
+
+    def _update_chart(self) -> None:
+        matrix = self.matrix
+        if matrix is None:
+            self.chart.clear()
+            return
+        chosen = self.highlight.get()
+        names = [name for name in matrix.series if name != chosen] + ([chosen] if chosen in matrix.series else [])
+        self.chart.set_data(
+            matrix.years,
+            {name: [matrix.value(year, name) for year in matrix.years] for name in names},
+            colors={name: PALETTE["highlight"] if name == chosen else PALETTE["series"] for name in names},
+            widths={name: 2.5 if name == chosen else 1 for name in names},
+            legend=[chosen] if chosen in matrix.series else [],
+        )
+
+    def clear_filter(self) -> None:
+        self.year_from.delete(0, "end")
+        self.year_to.delete(0, "end")
+        self.load()
 
     def copy(self) -> None:
         if not self.tree.get_children():
-            show_warning("Папярэджанне", "Няма даных для капіравання.")
+            self.notify("Няма даных для капіравання.", kind="warn")
             return
         copy_to_clipboard(self.frame, tree_to_tsv(self.tree))
-        self.info.configure(text=f"Скапіравана радкоў: {len(self.tree.get_children())}")
+        self.notify(f"SERIES: скапіравана радкоў: {len(self.tree.get_children())}", kind="ok")
+
+    def export(self) -> None:
+        if not self.tree.get_children():
+            self.notify("Няма даных для экспарту.", kind="warn")
+            return
+        target = filedialog.asksaveasfilename(title="Экспарт SERIES", defaultextension=".csv",
+                                              filetypes=EXPORT_FILETYPES, initialfile=f"{self.probe}_series.csv")
+        if not target:
+            return
+        try:
+            count = save_tree_file(self.tree, Path(target))
+        except OSError as exc:
+            show_error("Памылка", f"Не атрымалася захаваць файл:\n{exc}", exc)
+            return
+        self.notify(f"SERIES: захавана радкоў: {count} у {target}", kind="ok")

@@ -159,3 +159,14 @@ def test_reconnects_after_connection_is_closed(test_db):
     assert not test_db.is_connected
     assert test_db.get_all_probes() == []
     assert test_db.is_connected
+
+
+def test_list_probes_summaries(test_db):
+    add_probe(test_db, "Alpha-1", kolichestvo_derevev_v_shkale_sht=25)
+    add_probe(test_db, "beta-2", shirota_grd=None, dolgota_grd=None)
+    summaries = test_db.list_probes()
+    assert [s.name for s in summaries] == ["Alpha-1", "beta-2"]
+    first, second = summaries
+    assert first.poroda == "С" and first.years == "1900–2020" and first.trees == 25 and first.has_coords
+    assert not second.has_coords
+    assert [s.name for s in test_db.list_probes("ALPHA")] == ["Alpha-1"]

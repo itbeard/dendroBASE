@@ -35,6 +35,23 @@ class ProbePoint(NamedTuple):
     trees: int | None = None
 
 
+class ProbeSummary(NamedTuple):
+    """Радок спіса пробных плошчаў."""
+    name: str
+    poroda: str | None = None
+    drevesnaya_poroda: str | None = None
+    first_year: int | None = None
+    last_year: int | None = None
+    trees: int | None = None
+    has_coords: bool = False
+
+    @property
+    def years(self) -> str:
+        if self.first_year is None and self.last_year is None:
+            return ""
+        return f"{self.first_year or '?'}–{self.last_year or '?'}"
+
+
 @dataclass
 class SeriesMatrix:
     """Серыі ў выглядзе матрыцы год x серыя."""

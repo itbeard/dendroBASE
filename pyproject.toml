@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dendrobase"
+version = "7.0.0"
+description = "База дэндрахраналагічных даных Беларусі: Tkinter-кліент да PostgreSQL/PostGIS"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "psycopg2-binary>=2.9",
+    "pandas>=2.0",
+    "openpyxl>=3.1",
+    "folium>=0.14",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+dendrobase = "dendrobase.__main__:main"
+dendrobase-import = "dendrobase.excel_import:main"
+
+[tool.setuptools.packages.find]
+include = ["dendrobase*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+pythonpath = ["."]

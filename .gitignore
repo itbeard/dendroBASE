@@ -1,0 +1,37 @@
+# Налады з паролямі
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Віртуальныя асяроддзі
+venv/
+.venv/
+env/
+
+# Логі і часовыя файлы
+logs/
+*.log
+map_*.html
+
+# Даныя: Excel-файлы з храналогіямі не павінны трапляць у рэпазіторый
+*.xlsx
+*.xlsm
+*.xls
+backup*.sql
+*.dump
+
+# Рэдактары і АС
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

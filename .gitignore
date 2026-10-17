@@ -27,6 +27,7 @@ map_*.html
 *.xlsx
 *.xlsm
 *.xls
+dendrobase_import_state.json
 backup*.sql
 *.dump
 

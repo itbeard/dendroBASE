@@ -2,14 +2,22 @@
 
 Запуск:  python -m dendrobase.excel_import --folder "шлях/да/папкі"
 Папка па змаўчанні бярэцца з DENDROBASE_EXCEL_FOLDER (.env).
+
+У папцы з файламі вядзецца стан імпарту (STATE_FILE): для кожнага файла SHA-256 змесціва,
+статус, папярэджанні і памылка. Пры паўторным запуску нязменныя апрацаваныя файлы
+прапускаюцца; --reimport апрацоўвае ўсё нанова.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import logging
+import os
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
@@ -26,6 +34,8 @@ log = logging.getLogger("dendrobase.excel_import")
 
 EXCEL_SUFFIXES = (".xlsx", ".xlsm")
 JOURNAL_FILE = "dendro_point_living.xlsx"
+STATE_FILE = "dendrobase_import_state.json"
+STATE_FORMAT = 1
 ExcelSource = "pd.ExcelFile | Path | str"  # шлях або адкрыты pd.ExcelFile
 
 
@@ -165,9 +175,102 @@ def read_series_sheet(source: ExcelSource, probe: str, sheet: str = "series") ->
     return values, errors
 
 
+def file_digest(path: Path) -> str:
+    """SHA-256 змесціва файла: па ім стан імпарту вызначае, ці змяніўся файл."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+@dataclass
+class FileResult:
+    """Вынік апрацоўкі аднаго файла для стану імпарту."""
+    probe: str
+    status: str = "done"  # done | skipped (няма ліста title) | error
+    warnings: list[str] = field(default_factory=list)
+    error: str | None = None
+
+
+class ImportState:
+    """Стан імпарту ў папцы з Excel (STATE_FILE): якія файлы ўжо апрацаваны і з якімі папярэджаннямі.
+
+    Файл прапускаецца пры паўторным запуску, калі яго змесціва не змянілася (SHA-256), ён быў
+    апрацаваны без памылак, яго ПП ёсць у базе і яго імпартавалі з не менш поўным рэжымам
+    (запуск з --overwrite пакрывае звычайны, але не наадварот).
+    """
+
+    def __init__(self, path: Path, files: dict[str, dict[str, object]] | None = None) -> None:
+        self.path = Path(path)
+        self.files: dict[str, dict[str, object]] = dict(files or {})
+        self.writable = True
+
+    @classmethod
+    def load(cls, folder: Path) -> "ImportState":
+        """Прачытаць стан з папкі. Няма файла або ён пашкоджаны: пачынаем з пустога."""
+        path = Path(folder) / STATE_FILE
+        if not path.is_file():
+            return cls(path)
+        try:
+            files = json.loads(path.read_text(encoding="utf-8"))["files"]
+            if not isinstance(files, dict):
+                raise ValueError("«files» не слоўнік")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            log.warning("Стан імпарту %s не прачытаны (%s): усе файлы будуць апрацаваны", path, exc)
+            return cls(path)
+        return cls(path, {name: entry for name, entry in files.items() if isinstance(entry, dict)})
+
+    def is_done(self, name: str, digest: str, *, probes: set[str], overwrite: bool) -> bool:
+        entry = self.files.get(name)
+        if entry is None or entry.get("sha256") != digest:
+            return False
+        if overwrite and not entry.get("overwrite"):
+            return False
+        status = entry.get("status")
+        if status == "skipped":
+            return True
+        return status == "done" and entry.get("probe") in probes
+
+    def record(self, name: str, digest: str, result: FileResult, *, overwrite: bool) -> None:
+        entry: dict[str, object] = {
+            "status": result.status,
+            "probe": result.probe,
+            "sha256": digest,
+            "imported": datetime.now().isoformat(timespec="seconds"),
+            "overwrite": overwrite,
+            "warnings": list(result.warnings),
+        }
+        if result.error is not None:
+            entry["error"] = result.error
+        self.files[name] = entry
+
+    def save(self) -> None:
+        """Запісаць стан атамарна. Памылка запісу (папка толькі для чытання) не спыняе імпарт."""
+        if not self.writable:
+            return
+        payload = {
+            "format": STATE_FORMAT,
+            "updated": datetime.now().isoformat(timespec="seconds"),
+            "files": dict(sorted(self.files.items())),
+        }
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        try:
+            tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(tmp, self.path)
+        except OSError as exc:
+            self.writable = False
+            log.warning("Стан імпарту не захаваны ў %s: %s", self.path, exc)
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
 @dataclass
 class ImportStats:
     files: int = 0
+    skipped: int = 0
     title_updated: int = 0
     crn_files: int = 0
     crn_rows: int = 0
@@ -178,37 +281,43 @@ class ImportStats:
 
     def summary(self) -> str:
         return (
-            f"Файлаў: {self.files}; абноўлена ПП: {self.title_updated}; "
+            f"Файлаў: {self.files}; прапушчана ўжо апрацаваных: {self.skipped}; "
+            f"абноўлена ПП: {self.title_updated}; "
             f"CRN: {self.crn_rows} радкоў з {self.crn_files} файлаў; "
             f"SERIES: {self.series_rows} значэнняў з {self.series_files} файлаў; "
             f"папярэджанняў: {self.warnings}; памылак: {self.errors}"
         )
 
 
-def import_file(db: DatabaseManager, path: Path, stats: ImportStats, *, overwrite: bool = False) -> None:
+def import_file(db: DatabaseManager, path: Path, stats: ImportStats, *, overwrite: bool = False) -> FileResult:
     """Імпартаваць адзін Excel-файл. Памылкі БД лічацца, але не спыняюць іншыя файлы."""
     probe = probe_name_from_file(path)
+    result = FileResult(probe)
     stats.files += 1
     log.info("[%s] %s", probe, path.name)
+
+    def warn(message: str) -> None:
+        log.warning("[%s] %s", probe, message)
+        result.warnings.append(message)
+        stats.warnings += 1
+
     try:
         with pd.ExcelFile(path) as workbook:
             if find_sheet(workbook, "title") is None:
-                log.warning("[%s] няма ліста title, файл прапушчаны", probe)
-                stats.warnings += 1
-                return
+                warn("няма ліста title, файл прапушчаны")
+                result.status = "skipped"
+                return result
 
             title, errors = read_title_sheet(workbook, probe)
             for message in errors:
-                log.warning("[%s] title, поле прапушчана: %s", probe, message)
-            stats.warnings += len(errors)
+                warn(f"title, поле прапушчана: {message}")
             db.upsert_title(title)
             stats.title_updated += 1
 
             if find_sheet(workbook, "crn") is not None:
                 rows, errors = read_crn_sheet(workbook, probe)
                 for message in errors:
-                    log.warning("[%s] %s", probe, message)
-                stats.warnings += len(errors)
+                    warn(message)
                 if rows:
                     written = db.upsert_crn_rows(probe, rows, overwrite=overwrite)
                     stats.crn_rows += written
@@ -221,8 +330,7 @@ def import_file(db: DatabaseManager, path: Path, stats: ImportStats, *, overwrit
             if find_sheet(workbook, "series") is not None:
                 values, errors = read_series_sheet(workbook, probe)
                 for message in errors:
-                    log.warning("[%s] %s", probe, message)
-                stats.warnings += len(errors)
+                    warn(message)
                 if values:
                     written = db.upsert_series_values(probe, values, overwrite=overwrite)
                     stats.series_rows += written
@@ -232,11 +340,13 @@ def import_file(db: DatabaseManager, path: Path, stats: ImportStats, *, overwrit
             else:
                 log.info("[%s] ліста series няма", probe)
     except DatabaseError as exc:
-        stats.errors += 1
-        log.error("[%s] памылка БД: %s", probe, exc)
+        result.status, result.error = "error", f"памылка БД: {exc}"
     except (ValueError, OSError) as exc:
+        result.status, result.error = "error", f"файл не прачытаны: {exc}"
+    if result.error is not None:
         stats.errors += 1
-        log.error("[%s] файл не прачытаны: %s", probe, exc)
+        log.error("[%s] %s", probe, result.error)
+    return result
 
 
 def excel_files(folder: Path) -> list[Path]:
@@ -248,12 +358,35 @@ def excel_files(folder: Path) -> list[Path]:
     )
 
 
-def import_folder(db: DatabaseManager, folder: Path, *, overwrite: bool = False) -> ImportStats:
+def import_folder(db: DatabaseManager, folder: Path, *, overwrite: bool = False,
+                  reimport: bool = False) -> ImportStats:
+    """Імпартаваць усе Excel-файлы папкі, прапускаючы ўжо апрацаваныя паводле ImportState.
+
+    reimport=True апрацоўвае ўсе файлы нанова; стан пры гэтым усё роўна абнаўляецца.
+    """
     stats = ImportStats()
+    folder = Path(folder)
     files = excel_files(folder)
-    log.info("Знойдзена Excel-файлаў: %d у %s", len(files), folder)
+    state = ImportState.load(folder)
+    probes = set(db.get_all_probes())
+    log.info("Знойдзена Excel-файлаў: %d у %s (у стане імпарту: %d)", len(files), folder, len(state.files))
     for path in files:
-        import_file(db, path, stats, overwrite=overwrite)
+        try:
+            digest = file_digest(path)
+        except OSError as exc:
+            stats.files += 1
+            stats.errors += 1
+            log.error("[%s] файл не прачытаны: %s", probe_name_from_file(path), exc)
+            continue
+        if not reimport and state.is_done(path.name, digest, probes=probes, overwrite=overwrite):
+            log.debug("[%s] ужо апрацаваны, прапушчаны", probe_name_from_file(path))
+            stats.skipped += 1
+            continue
+        result = import_file(db, path, stats, overwrite=overwrite)
+        state.record(path.name, digest, result, overwrite=overwrite)
+        state.save()  # пасля кожнага файла, каб перапынены запуск не губляў зробленае
+    if stats.skipped:
+        log.info("Прапушчана ўжо апрацаваных файлаў: %d (стан у %s)", stats.skipped, state.path)
     return stats
 
 
@@ -280,7 +413,8 @@ def fill_journal_numbers(db: DatabaseManager, path: Path) -> int:
 
 
 def run(settings: Settings, folder: Path, *, constraints: bool = True, journal: bool = True,
-        geometry: bool = True, geobotany: bool = False, overwrite: bool = False) -> ImportStats:
+        geometry: bool = True, geobotany: bool = False, overwrite: bool = False,
+        reimport: bool = False) -> ImportStats:
     db = DatabaseManager(settings.db)
     try:
         missing = db.check_schema()
@@ -289,7 +423,7 @@ def run(settings: Settings, folder: Path, *, constraints: bool = True, journal: 
         if constraints:
             for message in db.ensure_constraints():
                 log.info("Схема: %s", message)
-        stats = import_folder(db, Path(folder), overwrite=overwrite)
+        stats = import_folder(db, Path(folder), overwrite=overwrite, reimport=reimport)
         if journal:  # пасля імпарту, каб нумары трапілі і ў толькі што дададзеныя ПП
             journal_path = Path(folder) / JOURNAL_FILE
             if journal_path.is_file():
@@ -319,6 +453,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--folder", type=Path, help="папка з Excel-файламі (па змаўчанні DENDROBASE_EXCEL_FOLDER)")
     parser.add_argument("--overwrite", action="store_true",
                         help="перапісваць існуючыя радкі CRN і SERIES (па змаўчанні яны не чапаюцца)")
+    parser.add_argument("--reimport", action="store_true",
+                        help=f"апрацаваць усе файлы нанова, не зважаючы на {STATE_FILE} "
+                             "(па змаўчанні нязменныя апрацаваныя файлы прапускаюцца)")
     parser.add_argument("--geobotany", action="store_true",
                         help=f"запоўніць геабатанічныя палі па палігонах табліцы {GEO_POLYGON_TABLE} "
                              "(сцірае бягучыя значэнні ва ўсіх ПП!)")
@@ -350,6 +487,7 @@ def main(argv: list[str] | None = None) -> int:
             settings, folder,
             constraints=not args.no_constraints, journal=not args.no_journal,
             geometry=not args.no_geometry, geobotany=args.geobotany, overwrite=args.overwrite,
+            reimport=args.reimport,
         )
     except (DatabaseError, ValueError, OSError) as exc:
         log.error("Імпарт спынены: %s", exc)

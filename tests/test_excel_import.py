@@ -1,11 +1,13 @@
+import json
 from datetime import date
 from pathlib import Path
 
 import openpyxl
 import pytest
 
-from dendrobase.excel_import import (ImportStats, excel_files, fill_journal_numbers, import_folder, map_param,
-                                     probe_name_from_file, read_crn_sheet, read_series_sheet, read_title_sheet)
+from dendrobase.excel_import import (STATE_FILE, ImportStats, excel_files, fill_journal_numbers, import_folder,
+                                     map_param, probe_name_from_file, read_crn_sheet, read_series_sheet,
+                                     read_title_sheet)
 from dendrobase.models import CrnRow, SeriesValue
 
 
@@ -97,13 +99,18 @@ class RecordingDb:
 
     def __init__(self, fail_for: str | None = None):
         self.calls: list[tuple] = []
+        self.probes: set[str] = set()
         self.fail_for = fail_for
+
+    def get_all_probes(self):
+        return sorted(self.probes)
 
     def upsert_title(self, data):
         from dendrobase.db import DatabaseError
         if data["n_probnoy_ploshchadi"] == self.fail_for:
             raise DatabaseError("штучная памылка")
         self.calls.append(("title", dict(data)))
+        self.probes.add(data["n_probnoy_ploshchadi"])
 
     def upsert_crn_rows(self, probe, rows, *, overwrite=True):
         rows = list(rows)
@@ -173,5 +180,106 @@ def test_fill_journal_numbers_requires_columns(tmp_path):
 
 
 def test_import_stats_summary_mentions_all_counters():
-    text = ImportStats(files=3, title_updated=2, crn_rows=5, series_rows=7, warnings=1, errors=0).summary()
-    assert "Файлаў: 3" in text and "SERIES: 7" in text
+    text = ImportStats(files=3, skipped=4, title_updated=2, crn_rows=5, series_rows=7, warnings=1, errors=0).summary()
+    assert "Файлаў: 3" in text and "прапушчана ўжо апрацаваных: 4" in text and "SERIES: 7" in text
+
+
+# ------------------------------------------------------------- стан імпарту
+
+def read_state(folder: Path) -> dict:
+    return json.loads((folder / STATE_FILE).read_text(encoding="utf-8"))
+
+
+def test_second_run_skips_unchanged_files(tmp_path):
+    write_workbook(tmp_path / "PP01.xlsx", title=[("Широта,грд", 54.1)], crn=[("year", "raw"), (1850, 1.1)])
+    write_workbook(tmp_path / "PP02.xlsx", title=[("Главная порода", "С")])
+    db = RecordingDb()
+    first = import_folder(db, tmp_path)
+    assert (first.files, first.skipped) == (2, 0)
+
+    state = read_state(tmp_path)
+    assert state["format"] == 1 and list(state["files"]) == ["PP01.xlsx", "PP02.xlsx"]
+    entry = state["files"]["PP01.xlsx"]
+    assert entry["status"] == "done" and entry["probe"] == "pp01" and entry["overwrite"] is False
+    assert len(entry["sha256"]) == 64 and entry["warnings"] == [] and "error" not in entry
+
+    db.calls.clear()
+    second = import_folder(db, tmp_path)
+    assert (second.files, second.skipped, second.title_updated) == (0, 2, 0)
+    assert db.calls == []
+    assert "прапушчана ўжо апрацаваных: 2" in second.summary()
+
+
+def test_changed_file_is_imported_again(tmp_path):
+    path = write_workbook(tmp_path / "PP01.xlsx", title=[("Широта,грд", 54.1)])
+    write_workbook(tmp_path / "PP02.xlsx", title=[("Широта,грд", 1)])
+    db = RecordingDb()
+    import_folder(db, tmp_path)
+    write_workbook(path, title=[("Широта,грд", 55.0)])
+
+    stats = import_folder(db, tmp_path)
+    assert (stats.files, stats.skipped) == (1, 1)
+    assert db.calls[-1][1] == {"n_probnoy_ploshchadi": "pp01", "shirota_grd": 55.0}
+
+
+def test_state_keeps_warnings_and_errors_and_retries_failed_files(tmp_path):
+    write_workbook(tmp_path / "PP01.xlsx", title=[("Широта,грд", 54.1), ("Возраст средний", "80-120")],
+                   crn=[("year", "raw"), ("abc", 1)])
+    write_workbook(tmp_path / "bad.xlsx", title=[("Широта,грд", 1)])
+    write_workbook(tmp_path / "no_title.xlsx", crn=[("year", "raw"), (1850, 1.1)])
+    db = RecordingDb(fail_for="bad")
+    import_folder(db, tmp_path)
+
+    files = read_state(tmp_path)["files"]
+    assert files["PP01.xlsx"]["status"] == "done"
+    assert files["PP01.xlsx"]["warnings"][0] == "title, поле прапушчана: Возраст средний: '80-120'"
+    assert files["PP01.xlsx"]["warnings"][1].startswith("crn, радок 2")
+    assert files["bad.xlsx"]["status"] == "error" and "штучная памылка" in files["bad.xlsx"]["error"]
+    assert files["no_title.xlsx"]["status"] == "skipped"
+    assert files["no_title.xlsx"]["warnings"] == ["няма ліста title, файл прапушчаны"]
+
+    db.fail_for = None  # памылковы файл спрабуецца зноў; з папярэджаннямі і без title — прапускаюцца
+    stats = import_folder(db, tmp_path)
+    assert (stats.files, stats.skipped, stats.errors, stats.title_updated) == (1, 2, 0, 1)
+    assert read_state(tmp_path)["files"]["bad.xlsx"]["status"] == "done"
+
+
+def test_overwrite_run_reimports_files_imported_without_it(tmp_path):
+    write_workbook(tmp_path / "PP01.xlsx", title=[("Широта,грд", 54.1)], crn=[("year", "raw"), (1850, 1.1)])
+    db = RecordingDb()
+    import_folder(db, tmp_path)
+
+    stats = import_folder(db, tmp_path, overwrite=True)
+    assert (stats.files, stats.skipped) == (1, 0) and db.calls[-1][3] is True
+    assert read_state(tmp_path)["files"]["PP01.xlsx"]["overwrite"] is True
+    assert import_folder(db, tmp_path, overwrite=True).skipped == 1
+    assert import_folder(db, tmp_path).skipped == 1  # звычайны запуск пасля --overwrite таксама прапускае
+
+
+def test_reimport_flag_and_missing_probe_ignore_state(tmp_path):
+    write_workbook(tmp_path / "PP01.xlsx", title=[("Широта,грд", 54.1)])
+    db = RecordingDb()
+    import_folder(db, tmp_path)
+    assert import_folder(db, tmp_path, reimport=True).files == 1
+    assert import_folder(db, tmp_path).skipped == 1
+
+    db.probes.clear()  # базу ачысцілі: ПП больш няма, стан не лічыцца
+    assert import_folder(db, tmp_path).files == 1
+
+
+def test_corrupt_state_file_is_ignored(tmp_path, caplog):
+    write_workbook(tmp_path / "PP01.xlsx", title=[("Широта,грд", 54.1)])
+    (tmp_path / STATE_FILE).write_text("{не json", encoding="utf-8")
+    stats = import_folder(RecordingDb(), tmp_path)
+    assert stats.files == 1 and "не прачытаны" in caplog.text
+    assert read_state(tmp_path)["files"]["PP01.xlsx"]["status"] == "done"
+
+
+def test_unwritable_state_does_not_stop_import(tmp_path, caplog):
+    write_workbook(tmp_path / "PP01.xlsx", title=[("Широта,грд", 54.1)])
+    write_workbook(tmp_path / "PP02.xlsx", title=[("Широта,грд", 1)])
+    (tmp_path / STATE_FILE).mkdir()  # запісаць файл на месца папкі нельга
+    stats = import_folder(RecordingDb(), tmp_path)
+    assert (stats.files, stats.errors) == (2, 0)
+    assert caplog.text.count("Стан імпарту не захаваны") == 1
+    assert not (tmp_path / (STATE_FILE + ".tmp")).exists()

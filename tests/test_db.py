@@ -170,3 +170,20 @@ def test_list_probes_summaries(test_db):
     assert first.poroda == "С" and first.years == "1900–2020" and first.trees == 25 and first.has_coords
     assert not second.has_coords
     assert [s.name for s in test_db.list_probes("ALPHA")] == ["Alpha-1"]
+
+
+def test_excel_import_skips_unchanged_files_until_database_is_emptied(test_db, tmp_path):
+    """Стан імпарту прапускае нязменны файл, але не пасля ачысткі базы (ПП больш няма)."""
+    from dendrobase.excel_import import import_folder
+    from tests.test_excel_import import write_workbook
+
+    write_workbook(tmp_path / "PPDB.xlsx", title=[("Широта,грд", 54.1)], crn=[("year", "raw"), (1850, 1.1)])
+    first = import_folder(test_db, tmp_path)
+    assert (first.files, first.skipped, first.crn_rows) == (1, 0, 1)
+    assert test_db.get_all_probes() == ["ppdb"]
+    assert import_folder(test_db, tmp_path).skipped == 1
+
+    with test_db.transaction() as cur:
+        cur.execute("TRUNCATE series, crn, title RESTART IDENTITY CASCADE")
+    again = import_folder(test_db, tmp_path)
+    assert (again.files, again.skipped, again.crn_rows) == (1, 0, 1)

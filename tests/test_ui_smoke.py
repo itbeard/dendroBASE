@@ -320,26 +320,35 @@ def test_main_reports_connection_failure(tmp_path, monkeypatch, quiet_messages):
     assert ".env" in quiet_messages[-1][1]
 
 
-def test_tooltip_hides_on_click_enter_and_global_events(root):
-    from dendrobase.ui.widgets import Tooltip, _ACTIVE_TOOLTIPS, hide_all_tooltips
-    root.deiconify()
-    root.geometry("300x200+0+0")
-    button = tk.Button(root, text="Кнопка")
-    button.pack()
-    root.update()
-    tooltip = Tooltip(button, "падказка", delay_ms=1)
-    tooltip._show()
-    assert tooltip.visible and tooltip in _ACTIVE_TOOLTIPS
-    tooltip.hide()
-    assert not tooltip.visible and tooltip not in _ACTIVE_TOOLTIPS
-    tooltip._show()
-    hide_all_tooltips()  # тое, што робіць любы клік або клавіша ў акне
-    assert not tooltip.visible
-    tooltip._show()
-    root.update()
-    button.event_generate("<ButtonPress-1>")
-    assert not tooltip.visible
-    root.withdraw()
+def test_hints_go_to_status_bar_and_dialog_hint_row(app):
+    from dendrobase.ui.dialogs import AddProbeDialog
+    app.notify("захавана", kind="ok")
+    before = app.status.message.cget("text")
+    app.info_tab.save_button.event_generate("<Enter>")
+    assert app.status.message.cget("text").startswith("Ctrl+S")
+    app.info_tab.save_button.event_generate("<Leave>")
+    assert app.status.message.cget("text") == before  # паведамленне вярнулася
+
+    add = AddProbeDialog(app.root, app.db)
+    label = add.form.labels["shirota_grd"]
+    label.event_generate("<Enter>")
+    assert "градусы" in add.hint.cget("text")
+    assert app.status.message.cget("text") == before  # падказка дыялога не трапляе ў галоўнае акно
+    label.event_generate("<Leave>")
+    assert add.hint.cget("text") == ""
+    assert add.dialog.grab_status() is None  # дыялогі не мадальныя
+    add.dialog.destroy()
+
+
+def test_same_dialog_is_not_opened_twice(app):
+    app.add_new_probe()
+    first = app._dialogs["new_probe"]
+    app.add_new_probe()
+    assert app._dialogs["new_probe"] is first
+    first.destroy()
+    app.add_new_probe()
+    assert app._dialogs["new_probe"] is not first
+    app._dialogs["new_probe"].destroy()
 
 
 def test_gui_startup_does_not_import_folium_or_pandas():

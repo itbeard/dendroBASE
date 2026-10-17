@@ -13,7 +13,7 @@ from pathlib import Path
 from tkinter import ttk
 from typing import Callable, Iterable, Mapping, Sequence
 
-from .theme import PALETTE, app_font
+from .theme import PALETTE
 
 _WHEEL_CANVASES: set[tk.Canvas] = set()
 
@@ -92,114 +92,55 @@ class ScrollableFrame(ttk.Frame):
 
 
 # ------------------------------------------------------------------ падказкі
-_ACTIVE_TOOLTIPS: set["Tooltip"] = set()
+# Падказкі не ствараюць асобных вокнаў (на macOS з Tk 8.6.12 такія акенцы часам перахопліваюць
+# клікі). Замест гэтага тэкст падказкі перадаецца «прыёмніку» бліжэйшага акна: у галоўным акне
+# гэта радок стану, у дыялогах радок унізе.
+_HINT_SINK_ATTR = "_dendrobase_hint_sink"
 
 
-def hide_all_tooltips() -> None:
-    for tooltip in list(_ACTIVE_TOOLTIPS):
-        tooltip.hide()
+def set_hint_sink(window: tk.Misc, sink: Callable[[str | None], None]) -> None:
+    """Прызначыць акну прыёмнік падказак: sink(text) пры навядзенні, sink(None) пры выхадзе."""
+    setattr(window, _HINT_SINK_ATTR, sink)
 
 
-def _bind_global_tooltip_hide(widget: tk.Misc) -> None:
-    """Любы клік, клавіша або змена фокусу хаваюць усе падказкі: страховка ад «завіслай» падказкі."""
-    app_root = widget.nametowidget(".")
-    if getattr(app_root, "_dendrobase_tooltips_bound", False):
-        return
-    for sequence in ("<ButtonPress>", "<Key>", "<FocusOut>", "<Unmap>"):
-        app_root.bind_all(sequence, lambda _e: hide_all_tooltips(), add="+")
-    setattr(app_root, "_dendrobase_tooltips_bound", True)
-
-
-class Tooltip:
-    """Усплывальная падказка каля курсора.
-
-    Паказваецца з затрымкай, хаваецца пры выхадзе курсора, кліку, клавішы, уваходзе курсора
-    ў само акенца падказкі і праз AUTO_HIDE_MS. Так яна ніколі не перакрывае суседнія кнопкі надоўга.
-    """
-
-    AUTO_HIDE_MS = 4000
-
-    def __init__(self, widget: tk.Widget, text: str, delay_ms: int = 600) -> None:
-        self.widget = widget
-        self.text = text
-        self.delay_ms = delay_ms
-        self._after: str | None = None
-        self._auto_hide: str | None = None
-        self._tip: tk.Toplevel | None = None
-        widget.bind("<Enter>", self._schedule, add="+")
-        widget.bind("<Motion>", self._on_motion, add="+")
-        for sequence in ("<Leave>", "<ButtonPress>", "<Destroy>"):
-            widget.bind(sequence, self.hide, add="+")
-        _bind_global_tooltip_hide(widget)
-
-    def _on_motion(self, event: tk.Event) -> None:
-        if self._tip is None:
-            self._schedule(event)
-
-    def _schedule(self, _event: tk.Event | None = None) -> None:
-        self._cancel_timer()
-        self._after = self.widget.after(self.delay_ms, self._show)
-
-    def _cancel_timer(self) -> None:
-        for name in ("_after", "_auto_hide"):
-            handle = getattr(self, name)
-            if handle is not None:
-                try:
-                    self.widget.after_cancel(handle)
-                except tk.TclError:
-                    pass
-                setattr(self, name, None)
-
-    def _show(self) -> None:
-        self._after = None
-        if self._tip is not None or not self.text:
-            return
-        try:
-            if not self.widget.winfo_exists() or not self.widget.winfo_ismapped():
-                return
-            x, y = self.widget.winfo_pointerxy()
-            tip = tk.Toplevel(self.widget)
-            tip.wm_overrideredirect(True)
-            try:
-                tip.attributes("-topmost", True)
-            except tk.TclError:
-                pass
-            tk.Label(tip, text=self.text, justify="left", background=PALETTE["tooltip_bg"],
-                     foreground=PALETTE["text"], relief="solid", borderwidth=1, padx=6, pady=3,
-                     font=app_font(size_delta=-1), wraplength=340).pack()
-            tip.update_idletasks()
-            width, height = tip.winfo_reqwidth(), tip.winfo_reqheight()
-            x = min(x + 14, self.widget.winfo_screenwidth() - width - 8)
-            y = y + 20
-            if y + height > self.widget.winfo_screenheight() - 8:
-                y = y - height - 28
-            tip.wm_geometry(f"+{max(0, x)}+{max(0, y)}")
-            tip.bind("<Enter>", self.hide)
-            tip.bind("<ButtonPress>", self.hide)
-        except tk.TclError:
-            return
-        self._tip = tip
-        _ACTIVE_TOOLTIPS.add(self)
-        self._auto_hide = self.widget.after(self.AUTO_HIDE_MS, self.hide)
-
-    def hide(self, _event: tk.Event | None = None) -> None:
-        self._cancel_timer()
-        _ACTIVE_TOOLTIPS.discard(self)
-        if self._tip is not None:
-            try:
-                self._tip.destroy()
-            except tk.TclError:
-                pass
-            self._tip = None
-
-    @property
-    def visible(self) -> bool:
-        return self._tip is not None
+def find_hint_sink(widget: tk.Misc) -> Callable[[str | None], None] | None:
+    current: tk.Misc | None = widget
+    while current is not None:
+        sink = getattr(current, _HINT_SINK_ATTR, None)
+        if sink is not None:
+            return sink
+        current = getattr(current, "master", None)
+    return None
 
 
 def add_tooltip(widget: tk.Widget, text: str) -> None:
-    if text:
-        Tooltip(widget, text)
+    """Паказваць text у прыёмніку падказак, пакуль курсор над віджэтам."""
+    if not text:
+        return
+
+    def emit(value: str | None) -> None:
+        sink = find_hint_sink(widget)
+        if sink is not None:
+            sink(value)
+
+    widget.bind("<Enter>", lambda _e: emit(text), add="+")
+    widget.bind("<Leave>", lambda _e: emit(None), add="+")
+    widget.bind("<Destroy>", lambda _e: emit(None), add="+")
+
+
+class HintLabel(ttk.Label):
+    """Радок падказак для дыялогаў: паказвае тэкст пры навядзенні на віджэты акна."""
+
+    def __init__(self, master: tk.Misc, window: tk.Misc, default: str = "", **kwargs) -> None:
+        super().__init__(master, text=default, style="Hint.TLabel", **kwargs)
+        self.default = default
+        set_hint_sink(window, self.show)
+
+    def show(self, text: str | None) -> None:
+        try:
+            self.configure(text=text if text else self.default)
+        except tk.TclError:
+            pass
 
 
 class PlaceholderEntry(ttk.Entry):

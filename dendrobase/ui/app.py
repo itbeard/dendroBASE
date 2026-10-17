@@ -19,7 +19,7 @@ from .series_tab import SeriesTab
 from .statusbar import StatusBar
 from .theme import PAD, apply_theme
 from .ui_state import load_ui_state, save_ui_state
-from .widgets import PlaceholderEntry, add_tooltip, make_treeview
+from .widgets import PlaceholderEntry, add_tooltip, make_treeview, set_hint_sink
 
 APP_TITLE = "DendroBASE"
 _GEOMETRY = re.compile(r"^(\d+)x(\d+)\+(-?\d+)\+(-?\d+)$")
@@ -34,6 +34,7 @@ class DendroApp:
         self.log_path = log_path
         self.current_probe: str | None = None
         self._search_after: str | None = None
+        self._dialogs: dict[str, tk.Toplevel] = {}
         self._syncing_list = False
         self.state = load_ui_state()
 
@@ -137,6 +138,7 @@ class DendroApp:
         postgis = self.db.has_postgis() and self.db.has_geometry_column()
         self.status = StatusBar(self.root, connection=connection, postgis=postgis)
         self.status.pack(side="bottom", fill="x")
+        set_hint_sink(self.root, self.status.show_hint)
         ttk.Separator(self.root, orient="horizontal").pack(side="bottom", fill="x")
 
         self.paned = ttk.PanedWindow(self.root, orient="horizontal")
@@ -271,22 +273,34 @@ class DendroApp:
         return self.current_probe
 
     # --------------------------------------------------------------- дзеянні
+    def _open_dialog(self, key: str, factory) -> None:
+        """Дыялогі не мадальныя, таму адзін і той жа не адкрываецца двойчы: існуючы падымаецца наверх."""
+        existing = self._dialogs.get(key)
+        if existing is not None and existing.winfo_exists():
+            existing.lift()
+            existing.focus_force()
+            return
+        self._dialogs[key] = factory().dialog
+
     def add_new_probe(self) -> None:
         if self.info_tab.check_unsaved():
-            AddProbeDialog(self.root, self.db, on_change=self.on_data_changed, notify=self.notify)
+            self._open_dialog("new_probe", lambda: AddProbeDialog(
+                self.root, self.db, on_change=self.on_data_changed, notify=self.notify))
 
     def add_crn(self) -> None:
         probe = self._require_probe()
         if probe:
-            CrnDialog(self.root, self.db, probe, on_change=self.on_data_changed, notify=self.notify)
+            self._open_dialog(f"crn:{probe}", lambda: CrnDialog(
+                self.root, self.db, probe, on_change=self.on_data_changed, notify=self.notify))
 
     def add_series(self) -> None:
         probe = self._require_probe()
         if probe:
-            SeriesDialog(self.root, self.db, probe, on_change=self.on_data_changed, notify=self.notify)
+            self._open_dialog(f"series:{probe}", lambda: SeriesDialog(
+                self.root, self.db, probe, on_change=self.on_data_changed, notify=self.notify))
 
     def open_sql(self) -> None:
-        SqlQueryDialog(self.root, self.db, notify=self.notify)
+        self._open_dialog("sql", lambda: SqlQueryDialog(self.root, self.db, notify=self.notify))
 
     def update_selected_geometry(self) -> None:
         probe = self._require_probe()

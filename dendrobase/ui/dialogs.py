@@ -12,7 +12,7 @@ from ..reference import CRN_COLUMNS, PORODA_DICT, PROBE_KEY, TITLE_SECTIONS
 from .feedback import ask_yes_no, show_error
 from .theme import PAD, app_font
 from .title_form import TitleForm
-from .widgets import (ScrollableFrame, add_tooltip, clear_tree, copy_to_clipboard, fill_tree, make_treeview,
+from .widgets import (HintLabel, ScrollableFrame, add_tooltip, clear_tree, copy_to_clipboard, fill_tree, make_treeview,
                       read_clipboard, set_columns, tree_to_tsv)
 
 ChangeCallback = Callable[[str], None]
@@ -22,17 +22,25 @@ CRN_NUMERIC = {"year": 0, "num": 0, "raw": 3, "std": 3, "res": 3, "ars": 3}
 
 
 def _modal(parent: tk.Misc, title: str, size: str, min_size: tuple[int, int] = (560, 400)) -> tk.Toplevel:
+    """Дыялог паверх галоўнага акна, без мадальнага захопу: на macOS з Tk 8.6.12 лакальны захоп
+    перыядычна «з'ядае» клікі і ў дыялогу, і ў галоўным акне пасля яго закрыцця."""
     dialog = tk.Toplevel(parent)
     dialog.title(title)
     dialog.geometry(size)
     dialog.minsize(*min_size)
     dialog.transient(parent.winfo_toplevel())
     dialog.bind("<Escape>", lambda _e: dialog.destroy())
-    try:
-        dialog.grab_set()
-    except tk.TclError:  # акно яшчэ не паказана (напрыклад, у тэстах)
-        pass
+    dialog.after_idle(dialog.lift)
     return dialog
+
+
+def _bottom_bar(dialog: tk.Toplevel) -> tuple[ttk.Frame, HintLabel]:
+    """Ніжні радок дыялога: кнопкі і радок падказак для віджэтаў гэтага акна."""
+    bar = ttk.Frame(dialog, padding=(PAD * 2, 6, PAD * 2, PAD))
+    bar.pack(side="bottom", fill="x")
+    hint = HintLabel(dialog, dialog, default="")
+    hint.pack(side="bottom", fill="x", padx=PAD * 2, pady=(0, 2))
+    return bar, hint
 
 
 def _header(dialog: tk.Misc, title: str, hint: str = "") -> None:
@@ -89,8 +97,7 @@ class AddProbeDialog:
         _header(self.dialog, "Крок 1 з 3  ·  Новая пробная плошча",
                 "Палі з * абавязковыя. Пасля захавання можна адразу ўставіць CRN і SERIES з буфера абмену.")
 
-        buttons = ttk.Frame(self.dialog, padding=(PAD * 2, 6, PAD * 2, PAD))
-        buttons.pack(side="bottom", fill="x")
+        buttons, self.hint = _bottom_bar(self.dialog)
         ttk.Button(buttons, text="Расшыфроўка пародаў", command=lambda: PorodaHelpDialog(self.dialog)).pack(side="left")
         ttk.Button(buttons, text="Захаваць і перайсці да CRN  →", command=self.save_and_continue).pack(side="right")
         ttk.Button(buttons, text="Захаваць", command=self.save_only).pack(side="right", padx=4)
@@ -175,8 +182,7 @@ class CrnDialog:
         ttk.Label(example, text=_CRN_EXAMPLE.replace("\t", "    "), font=app_font(fixed=True, size_delta=-1),
                   style="Hint.TLabel", justify="left").pack(side="left", padx=PAD)
 
-        buttons = ttk.Frame(self.dialog, padding=(PAD * 2, 6, PAD * 2, PAD))
-        buttons.pack(side="bottom", fill="x")
+        buttons, self.hint = _bottom_bar(self.dialog)
         if chain:
             ttk.Button(buttons, text="Прапусціць CRN", command=self.skip).pack(side="left")
             ttk.Button(buttons, text="Захаваць і перайсці да SERIES  →", command=self.save_and_continue).pack(side="right")
@@ -266,8 +272,7 @@ class SeriesDialog:
         ttk.Label(example, text=_SERIES_EXAMPLE.replace("\t", "    "), font=app_font(fixed=True, size_delta=-1),
                   style="Hint.TLabel", justify="left").pack(side="left", padx=PAD)
 
-        buttons = ttk.Frame(self.dialog, padding=(PAD * 2, 6, PAD * 2, PAD))
-        buttons.pack(side="bottom", fill="x")
+        buttons, self.hint = _bottom_bar(self.dialog)
         ttk.Button(buttons, text="Прапусціць SERIES" if chain else "Зачыніць", command=self.dialog.destroy).pack(side="left")
         ttk.Button(buttons, text="Захаваць і скончыць" if chain else "Захаваць", command=self.save).pack(side="right")
 

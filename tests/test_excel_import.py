@@ -5,9 +5,10 @@ from pathlib import Path
 import openpyxl
 import pytest
 
-from dendrobase.excel_import import (STATE_FILE, ImportStats, excel_files, fill_journal_numbers, import_folder,
-                                     map_param, probe_name_from_file, read_crn_sheet, read_series_sheet,
-                                     read_title_sheet)
+from dendrobase.config import Settings
+from dendrobase.excel_import import (STATE_FILE, ImportProgress, ImportStats, excel_files, fill_journal_numbers,
+                                     import_folder, map_param, probe_name_from_file, read_crn_sheet,
+                                     read_series_sheet, read_title_sheet, run)
 from dendrobase.models import CrnRow, SeriesValue
 
 
@@ -283,3 +284,73 @@ def test_unwritable_state_does_not_stop_import(tmp_path, caplog):
     assert (stats.files, stats.errors) == (2, 0)
     assert caplog.text.count("Стан імпарту не захаваны") == 1
     assert not (tmp_path / (STATE_FILE + ".tmp")).exists()
+
+
+# ------------------------------------------------------ ход працы і спыненне (для акна імпарту)
+
+def test_progress_reports_scan_each_file_and_unchanged(tmp_path):
+    write_workbook(tmp_path / "PP01.xlsx", title=[("Широта,грд", 54.1)],
+                   crn=[("year", "raw"), (1850, 1.1), (1851, 1.2)], series=[("year", "1"), (1850, 1.5)])
+    write_workbook(tmp_path / "no_title.xlsx", crn=[("year", "raw"), (1850, 1.1)])
+    db = RecordingDb()
+    events: list[ImportProgress] = []
+    import_folder(db, tmp_path, progress=events.append)
+    assert [(e.stage, e.done, e.total, e.file) for e in events] == [
+        ("scan", 0, 2, ""), ("file", 1, 2, "PP01.xlsx"), ("file", 2, 2, "no_title.xlsx")]
+    first = events[1].result
+    assert first.status == "done" and first.probe == "pp01" and (first.crn_rows, first.series_rows) == (2, 1)
+    assert events[2].result.status == "skipped" and events[2].result.warnings == ["няма ліста title, файл прапушчаны"]
+
+    events.clear()
+    import_folder(db, tmp_path, progress=events.append)
+    assert [(e.stage, e.file, e.result) for e in events[1:]] == [
+        ("unchanged", "PP01.xlsx", None), ("unchanged", "no_title.xlsx", None)]
+
+
+def test_unreadable_file_is_reported_as_error_event(tmp_path, monkeypatch):
+    write_workbook(tmp_path / "PP01.xlsx", title=[("Широта,грд", 54.1)])
+    monkeypatch.setattr("dendrobase.excel_import.file_digest", lambda path: (_ for _ in ()).throw(OSError("няма доступу")))
+    events: list[ImportProgress] = []
+    stats = import_folder(RecordingDb(), tmp_path, progress=events.append)
+    assert (stats.files, stats.errors) == (1, 1)
+    assert events[1].result.status == "error" and "няма доступу" in events[1].result.error
+
+
+def test_should_stop_cancels_between_files_and_keeps_state(tmp_path):
+    for name in ("a.xlsx", "b.xlsx", "c.xlsx"):
+        write_workbook(tmp_path / name, title=[("Широта,грд", 1)])
+    db = RecordingDb()
+    answers = iter([False, True])  # перад першым файлам «працуй», перад другім «спыніся»
+    stats = import_folder(db, tmp_path, should_stop=lambda: next(answers))
+    assert stats.cancelled and (stats.files, stats.errors) == (1, 0)
+    assert [call[1]["n_probnoy_ploshchadi"] for call in db.calls] == ["a"]
+    assert list(read_state(tmp_path)["files"]) == ["a.xlsx"]  # зробленае запісана ў стан
+
+    rest = import_folder(db, tmp_path)  # паўторны запуск дабірае астатнія і не чапае зробленае
+    assert (rest.files, rest.skipped, rest.cancelled) == (2, 1, False)
+
+
+def test_run_imports_into_database_and_reports_stages(clean_db, tmp_path):
+    """Поўны імпарт праз run(), як у акне імпарту: уласнае злучэнне, этапы journal і geometry, зводка."""
+    write_workbook(tmp_path / "PP01.xlsx", title=[("Широта,грд", 54.1), ("Долгота, грд", 26.2), ("Главная порода", "С")],
+                   crn=[("year", "raw"), (1850, 1.1)], series=[("year", "1"), (1850, 1.5)])
+    events: list[ImportProgress] = []
+    stats = run(Settings(db=clean_db.settings), tmp_path, progress=events.append)
+    assert (stats.files, stats.title_updated, stats.crn_rows, stats.series_rows, stats.errors, stats.cancelled) == (1, 1, 1, 1, 0, False)
+    assert clean_db.get_all_probes() == ["pp01"]
+    assert clean_db.get_crn("pp01") == [CrnRow(1850, raw=1.1)]
+    assert clean_db.get_series_matrix("pp01").series == ["1"]
+    assert [e.stage for e in events] == ["scan", "file", "journal", "geometry"]
+    assert events[2].count is None  # dendro_point_living.xlsx у папцы няма
+    postgis = clean_db.has_postgis() and clean_db.has_geometry_column()
+    assert (events[3].count is None) is (not postgis)
+    assert clean_db.is_connected  # run() зачыняе толькі сваё злучэнне
+
+
+def test_run_cancelled_before_first_file_skips_later_stages(clean_db, tmp_path):
+    write_workbook(tmp_path / "PP01.xlsx", title=[("Широта,грд", 54.1)])
+    events: list[ImportProgress] = []
+    stats = run(Settings(db=clean_db.settings), tmp_path, progress=events.append, should_stop=lambda: True)
+    assert stats.cancelled and stats.files == 0
+    assert [e.stage for e in events] == ["scan"]
+    assert clean_db.get_all_probes() == []

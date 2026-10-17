@@ -18,6 +18,7 @@ from .crn_tab import CrnTab
 from .dialogs import AddProbeDialog, CrnDialog, PorodaHelpDialog, SeriesDialog, SettingsDialog, SqlQueryDialog
 from .feedback import ask_yes_no, show_error, show_info
 from .filter_tab import FilterTab
+from .import_dialog import ImportDialog
 from .info_tab import InfoTab
 from .map_tab import MapTab
 from .preferences import Preferences, load_preferences, save_preferences
@@ -157,6 +158,7 @@ class DendroApp:
 
         tools = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label=tr("Інструменты"), menu=tools)
+        tools.add_command(label=tr("Імпарт даных…"), command=self.open_import, accelerator="Ctrl+I")
         tools.add_command(label=tr("SQL-запыт…"), command=self.open_sql)
         tools.add_command(label=tr("Адкрыць мапу ў браўзеры"), command=lambda: self.map_tab.open_map())
         tools.add_separator()
@@ -175,6 +177,7 @@ class DendroApp:
             "n": self.add_new_probe,
             "f": lambda: self.search.focus_set(),
             "s": lambda: self.info_tab.save(),
+            "i": self.open_import,
             "q": self.on_exit,
             "comma": self.open_settings,
         }
@@ -325,14 +328,19 @@ class DendroApp:
         return self.current_probe
 
     # --------------------------------------------------------------- дзеянні
-    def _open_dialog(self, key: str, factory) -> None:
-        """Дыялогі не мадальныя, таму адзін і той жа не адкрываецца двойчы: існуючы падымаецца наверх."""
+    def _open_dialog(self, key: str, factory):
+        """Дыялогі не мадальныя, таму адзін і той жа не адкрываецца двойчы: існуючы падымаецца наверх.
+
+        Вяртае новы дыялог або None, калі падняты ўжо адкрыты.
+        """
         existing = self._dialogs.get(key)
         if existing is not None and existing.winfo_exists():
             existing.lift()
             existing.focus_force()
-            return
-        self._dialogs[key] = factory().dialog
+            return None
+        created = factory()
+        self._dialogs[key] = created.dialog
+        return created
 
     def add_new_probe(self) -> None:
         if self.info_tab.check_unsaved():
@@ -353,6 +361,29 @@ class DendroApp:
 
     def open_sql(self) -> None:
         self._open_dialog("sql", lambda: SqlQueryDialog(self.root, self.db, notify=self.notify))
+
+    def open_import(self) -> ImportDialog | None:
+        """Акно імпарту з Excel: тая ж каманда excel_import, але з папкай, опцыямі і журналам ходу працы."""
+        settings = self.settings
+        if settings is None:
+            self.notify(tr("Імпарт недаступны: праграма запушчана без налад падключэння."), kind="warn")
+            return None
+        return self._open_dialog("import", lambda: ImportDialog(
+            self.root, settings, on_change=self.on_import_finished, notify=self.notify))
+
+    def on_import_finished(self) -> None:
+        """Пасля імпарту ўсё, што паказвае базу, перачытваецца: спіс ПП, мапа, пароды ў фільтрах, укладкі бягучай ПП."""
+        self.refresh_probes()
+        self.map_tab.refresh()
+        self.filter_tab.refresh_species()
+        probe = self.current_probe
+        if not probe:
+            return
+        if self.info_tab.is_dirty():  # незахаваныя праўкі анкеты не губляюцца: абнаўляюцца толькі CRN і SERIES
+            self.crn_tab.set_probe(probe)
+            self.series_tab.set_probe(probe)
+        else:
+            self.select_probe(probe, force=True)
 
     def open_settings(self) -> None:
         self._open_dialog("settings", lambda: SettingsDialog(self.root, self.preferences, on_apply=self.apply_preferences))
@@ -403,6 +434,7 @@ class DendroApp:
                      "Enter    прымяніць фільтр па гадах / запусціць пошук\n"
                      "Ctrl+V   уставіць табліцу ў вокнах CRN і SERIES\n"
                      "Ctrl+Enter   выканаць SQL-запыт\n"
+                     "Ctrl+I   імпарт даных з Excel\n"
                      "Ctrl+,   налады\n"
                      "Ctrl+Q   выйсці\n\n"
                      "На macOS замест Ctrl працуе Cmd."))

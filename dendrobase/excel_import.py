@@ -19,13 +19,13 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
 import pandas as pd
 
 from .config import ConfigError, Settings
 from .db import GEO_POLYGON_TABLE, DatabaseError, DatabaseManager
-from .i18n import set_language
+from .i18n import set_language, tr
 from .logging_setup import setup_logging
 from .models import CrnRow, SeriesValue
 from .parsing import cell_to_text, coerce_title_values, parse_float, parse_int
@@ -187,11 +187,33 @@ def file_digest(path: Path) -> str:
 
 @dataclass
 class FileResult:
-    """Вынік апрацоўкі аднаго файла для стану імпарту."""
+    """Вынік апрацоўкі аднаго файла для стану імпарту і акна ходу працы."""
     probe: str
     status: str = "done"  # done | skipped (няма ліста title) | error
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
+    crn_rows: int = 0     # запісана радкоў CRN (у стан імпарту не трапляе)
+    series_rows: int = 0  # запісана значэнняў SERIES
+
+
+@dataclass(frozen=True)
+class ImportProgress:
+    """Падзея ходу імпарту для інтэрфейсу. Без Tk: як яе паказаць, вырашае атрымальнік.
+
+    stage: "scan" (файлы палічаны, зададзены total); "file" (файл апрацаваны, падрабязнасці ў result);
+    "unchanged" (нязменны файл прапушчаны па стане імпарту); "journal", "geometry", "geobotany"
+    (этапы пасля файлаў: count = колькасць абноўленых ПП або None, калі этап не выконваўся).
+    """
+    stage: str
+    done: int = 0   # файлаў пройдзена, разам з прапушчанымі
+    total: int = 0  # файлаў у папцы
+    file: str = ""
+    result: FileResult | None = None
+    count: int | None = None
+
+
+ProgressCallback = Callable[[ImportProgress], None]
+StopCheck = Callable[[], bool]
 
 
 class ImportState:
@@ -279,15 +301,17 @@ class ImportStats:
     series_rows: int = 0
     warnings: int = 0
     errors: int = 0
+    cancelled: bool = False  # спынены па запыце (should_stop), не ўсе файлы пройдзены
 
     def summary(self) -> str:
-        return (
-            f"Файлаў: {self.files}; прапушчана ўжо апрацаваных: {self.skipped}; "
-            f"абноўлена ПП: {self.title_updated}; "
-            f"CRN: {self.crn_rows} радкоў з {self.crn_files} файлаў; "
-            f"SERIES: {self.series_rows} значэнняў з {self.series_files} файлаў; "
-            f"папярэджанняў: {self.warnings}; памылак: {self.errors}"
-        )
+        return tr(
+            "Файлаў: {files}; прапушчана ўжо апрацаваных: {skipped}; абноўлена ПП: {titles}; "
+            "CRN: {crn_rows} радкоў з {crn_files} файлаў; SERIES: {series_rows} значэнняў з {series_files} файлаў; "
+            "папярэджанняў: {warnings}; памылак: {errors}"
+        ).format(files=self.files, skipped=self.skipped, titles=self.title_updated,
+                 crn_rows=self.crn_rows, crn_files=self.crn_files,
+                 series_rows=self.series_rows, series_files=self.series_files,
+                 warnings=self.warnings, errors=self.errors)
 
 
 def import_file(db: DatabaseManager, path: Path, stats: ImportStats, *, overwrite: bool = False) -> FileResult:
@@ -321,6 +345,7 @@ def import_file(db: DatabaseManager, path: Path, stats: ImportStats, *, overwrit
                     warn(message)
                 if rows:
                     written = db.upsert_crn_rows(probe, rows, overwrite=overwrite)
+                    result.crn_rows = written
                     stats.crn_rows += written
                     stats.crn_files += 1 if written else 0
                     if not written:
@@ -334,6 +359,7 @@ def import_file(db: DatabaseManager, path: Path, stats: ImportStats, *, overwrit
                     warn(message)
                 if values:
                     written = db.upsert_series_values(probe, values, overwrite=overwrite)
+                    result.series_rows = written
                     stats.series_rows += written
                     stats.series_files += 1 if written else 0
                     if not written:
@@ -359,33 +385,47 @@ def excel_files(folder: Path) -> list[Path]:
     )
 
 
-def import_folder(db: DatabaseManager, folder: Path, *, overwrite: bool = False,
-                  reimport: bool = False) -> ImportStats:
+def import_folder(db: DatabaseManager, folder: Path, *, overwrite: bool = False, reimport: bool = False,
+                  progress: ProgressCallback | None = None, should_stop: StopCheck | None = None) -> ImportStats:
     """Імпартаваць усе Excel-файлы папкі, прапускаючы ўжо апрацаваныя паводле ImportState.
 
     reimport=True апрацоўвае ўсе файлы нанова; стан пры гэтым усё роўна абнаўляецца.
+    progress выклікаецца пасля падліку файлаў і пасля кожнага файла (гл. ImportProgress).
+    should_stop правяраецца перад кожным файлам: True спыняе імпарт, stats.cancelled становіцца True;
+    зробленае да гэтага застаецца ў базе і ў стане імпарту.
     """
     stats = ImportStats()
     folder = Path(folder)
     files = excel_files(folder)
     state = ImportState.load(folder)
     probes = set(db.get_all_probes())
-    log.info("Знойдзена Excel-файлаў: %d у %s (у стане імпарту: %d)", len(files), folder, len(state.files))
-    for path in files:
+    report = progress or (lambda event: None)
+    total = len(files)
+    log.info("Знойдзена Excel-файлаў: %d у %s (у стане імпарту: %d)", total, folder, len(state.files))
+    report(ImportProgress("scan", total=total))
+    for index, path in enumerate(files, 1):
+        if should_stop is not None and should_stop():
+            stats.cancelled = True
+            log.warning("Імпарт спынены па запыце: пройдзена %d з %d файлаў", index - 1, total)
+            break
         try:
             digest = file_digest(path)
         except OSError as exc:
             stats.files += 1
             stats.errors += 1
-            log.error("[%s] файл не прачытаны: %s", probe_name_from_file(path), exc)
+            result = FileResult(probe_name_from_file(path), "error", error=f"файл не прачытаны: {exc}")
+            log.error("[%s] %s", result.probe, result.error)
+            report(ImportProgress("file", index, total, path.name, result))
             continue
         if not reimport and state.is_done(path.name, digest, probes=probes, overwrite=overwrite):
             log.debug("[%s] ужо апрацаваны, прапушчаны", probe_name_from_file(path))
             stats.skipped += 1
+            report(ImportProgress("unchanged", index, total, path.name))
             continue
         result = import_file(db, path, stats, overwrite=overwrite)
         state.record(path.name, digest, result, overwrite=overwrite)
         state.save()  # пасля кожнага файла, каб перапынены запуск не губляў зробленае
+        report(ImportProgress("file", index, total, path.name, result))
     if stats.skipped:
         log.info("Прапушчана ўжо апрацаваных файлаў: %d (стан у %s)", stats.skipped, state.path)
     return stats
@@ -414,8 +454,15 @@ def fill_journal_numbers(db: DatabaseManager, path: Path) -> int:
 
 
 def run(settings: Settings, folder: Path, *, constraints: bool = True, journal: bool = True,
-        geometry: bool = True, geobotany: bool = False, overwrite: bool = False,
-        reimport: bool = False) -> ImportStats:
+        geometry: bool = True, geobotany: bool = False, overwrite: bool = False, reimport: bool = False,
+        progress: ProgressCallback | None = None, should_stop: StopCheck | None = None) -> ImportStats:
+    """Поўны імпарт, як яго выконвае каманда: схема, файлы, n_journal, геаметрыя, зводка.
+
+    Адкрывае ўласнае злучэнне з БД і зачыняе яго ў канцы, таму можа працаваць у асобным патоку, пакуль
+    інтэрфейс карыстаецца сваім злучэннем. progress і should_stop гл. у import_folder; пасля спынення
+    этапы journal / geometry / geobotany не выконваюцца.
+    """
+    report = progress or (lambda event: None)
     db = DatabaseManager(settings.db)
     try:
         missing = db.check_schema()
@@ -424,21 +471,32 @@ def run(settings: Settings, folder: Path, *, constraints: bool = True, journal: 
         if constraints:
             for message in db.ensure_constraints():
                 log.info("Схема: %s", message)
-        stats = import_folder(db, Path(folder), overwrite=overwrite, reimport=reimport)
+        stats = import_folder(db, Path(folder), overwrite=overwrite, reimport=reimport,
+                              progress=progress, should_stop=should_stop)
+        if stats.cancelled:
+            return stats
         if journal:  # пасля імпарту, каб нумары трапілі і ў толькі што дададзеныя ПП
             journal_path = Path(folder) / JOURNAL_FILE
             if journal_path.is_file():
-                log.info("n_journal абноўлены для %d ПП", fill_journal_numbers(db, journal_path))
+                updated = fill_journal_numbers(db, journal_path)
+                log.info("n_journal абноўлены для %d ПП", updated)
+                report(ImportProgress("journal", count=updated))
             else:
                 log.info("Файла %s няма, n_journal не абнаўляецца", JOURNAL_FILE)
+                report(ImportProgress("journal"))
         if geometry:
             if db.has_postgis() and db.has_geometry_column():
-                log.info("Геаметрыя разлічана для %d ПП", db.update_geometry_all(only_missing=True))
+                updated = db.update_geometry_all(only_missing=True)
+                log.info("Геаметрыя разлічана для %d ПП", updated)
+                report(ImportProgress("geometry", count=updated))
             else:
                 log.warning("PostGIS не ўсталяваны або няма слупка geom: геаметрыя не абноўлена")
+                report(ImportProgress("geometry"))
         if geobotany:
-            log.info("Геабатанічныя палі запоўнены для %d ПП", db.assign_geobotany_from_polygons())
+            assigned = db.assign_geobotany_from_polygons()
+            log.info("Геабатанічныя палі запоўнены для %d ПП", assigned)
             log.info("Нармалізавана напісанне зоны ў %d ПП", db.normalize_zones())
+            report(ImportProgress("geobotany", count=assigned))
         for table in ("title", "crn", "series"):
             log.info("Усяго ў %s: %d радкоў", table, db.count_rows(table))
         return stats

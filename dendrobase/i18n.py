@@ -140,6 +140,7 @@ _EN: dict[str, str] = {
     "Абнавіць геаметрыю выбранай ПП": "Update geometry of selected plot",
     "Абнавіць геаметрыю ўсіх ПП": "Update geometry of all plots",
     "Інструменты": "Tools",
+    "Імпарт даных…": "Import data…",
     "SQL-запыт…": "SQL query…",
     "Налады…": "Settings…",
     "Даведка": "Help",
@@ -177,6 +178,7 @@ _EN: dict[str, str] = {
     "Enter    прымяніць фільтр па гадах / запусціць пошук\n"
     "Ctrl+V   уставіць табліцу ў вокнах CRN і SERIES\n"
     "Ctrl+Enter   выканаць SQL-запыт\n"
+    "Ctrl+I   імпарт даных з Excel\n"
     "Ctrl+,   налады\n"
     "Ctrl+Q   выйсці\n\n"
     "На macOS замест Ctrl працуе Cmd.":
@@ -187,6 +189,7 @@ _EN: dict[str, str] = {
         "Enter    apply the year filter / run the search\n"
         "Ctrl+V   paste a table in the CRN and SERIES windows\n"
         "Ctrl+Enter   run the SQL query\n"
+        "Ctrl+I   import data from Excel\n"
         "Ctrl+,   settings\n"
         "Ctrl+Q   quit\n\n"
         "On macOS use Cmd instead of Ctrl.",
@@ -201,6 +204,8 @@ _EN: dict[str, str] = {
         "and individual series in PostgreSQL/PostGIS.\n\n"
         "Connection: {connection}",
     "Налады захаваны.": "Settings saved.",
+    "Імпарт недаступны: праграма запушчана без налад падключэння.":
+        "Import is unavailable: the program was started without connection settings.",
     # --- налады
     "Налады": "Settings",
     "Мова і тэма прымяняюцца адразу і захоўваюцца паміж запускамі.":
@@ -383,6 +388,64 @@ _EN: dict[str, str] = {
     "Знойдзена радкоў: {count}": "Rows found: {count}",
     "Выканана. Закранута радкоў: {count}": "Done. Rows affected: {count}",
     "Скапіравана радкоў: {count}": "Rows copied: {count}",
+    # --- імпарт з Excel (акно і зводка каманды)
+    "Імпарт даных з Excel": "Import data from Excel",
+    "Адзін файл .xlsx = адна пробная плошча (назва файла = код ПП), унутры лісты title, crn і series. "
+    "Нязменныя файлы, апрацаваныя раней, прапускаюцца па стане імпарту ў папцы.":
+        "One .xlsx file = one sample plot (file name = plot code) with the sheets title, crn and series. "
+        "Unchanged files processed earlier are skipped according to the import state in the folder.",
+    "Пачаць імпарт": "Start import",
+    "Спыніць": "Stop",
+    "Імпарт спыніцца пасля бягучага файла; зробленае застаецца ў базе.":
+        "The import stops after the current file; what has been done stays in the database.",
+    "Папка з Excel-файламі:": "Folder with Excel files:",
+    "Па змаўчанні DENDROBASE_EXCEL_FOLDER з .env.": "Defaults to DENDROBASE_EXCEL_FOLDER from .env.",
+    "Выбраць…": "Browse…",
+    "Перапісваць існуючыя радкі CRN і SERIES": "Overwrite existing CRN and SERIES rows",
+    "Без гэтага гады, якія ўжо ёсць у базе, не чапаюцца: дадаюцца толькі новыя.":
+        "Otherwise years already in the database are left untouched: only new ones are added.",
+    "Апрацаваць усе файлы нанова": "Process all files again",
+    "Не зважаць на стан імпарту ў папцы (dendrobase_import_state.json).":
+        "Ignore the import state in the folder (dendrobase_import_state.json).",
+    "Запоўніць № журнала з dendro_point_living.xlsx": "Fill in journal numbers from dendro_point_living.xlsx",
+    "Файл шукаецца ў той жа папцы; без яго этап прапускаецца.":
+        "The file is looked up in the same folder; without it the step is skipped.",
+    "Разлічыць геаметрыю ПП (PostGIS)": "Compute plot geometry (PostGIS)",
+    "Толькі для ПП без geom. Без PostGIS этап прапускаецца.":
+        "Only for plots without geom. Without PostGIS the step is skipped.",
+    "Гатова да імпарту.": "Ready to import.",
+    "Папка з Excel-файламі": "Folder with Excel files",
+    "Задайце папку з Excel-файламі.": "Specify the folder with Excel files.",
+    "Папка не існуе: {folder}": "The folder does not exist: {folder}",
+    "Імпарт ідзе…": "Import in progress…",
+    "Папка: {folder}": "Folder: {folder}",
+    "Спыняецца пасля бягучага файла…": "Stopping after the current file…",
+    "Імпарт ідзе": "Import in progress",
+    "Імпарт яшчэ не завершаны. Спыніць яго і зачыніць акно?":
+        "The import has not finished yet. Stop it and close the window?",
+    "{done} з {total}": "{done} of {total}",
+    "Знойдзена Excel-файлаў: {count}": "Excel files found: {count}",
+    "{file}: без змен, прапушчаны": "{file}: unchanged, skipped",
+    "{file}: прапушчаны": "{file}: skipped",
+    "{file} → ПП {probe}: CRN {crn} радкоў, SERIES {series} значэнняў":
+        "{file} → plot {probe}: CRN {crn} rows, SERIES {series} values",
+    "Файла dendro_point_living.xlsx няма, № журнала не абнаўляецца.":
+        "No dendro_point_living.xlsx file, journal numbers are not updated.",
+    "№ журнала абноўлены для {count} ПП.": "Journal numbers updated for {count} plots.",
+    "PostGIS не ўсталяваны або няма слупка geom: геаметрыя не абноўлена.":
+        "PostGIS is not installed or there is no geom column: geometry not updated.",
+    "Геаметрыя разлічана для {count} ПП.": "Geometry computed for {count} plots.",
+    "Геабатанічныя палі запоўнены для {count} ПП.": "Geobotanical fields filled for {count} plots.",
+    "Імпарт спынены. {summary}": "Import stopped. {summary}",
+    "Імпарт завершаны з памылкамі. {summary}": "Import finished with errors. {summary}",
+    "Імпарт завершаны. {summary}": "Import finished. {summary}",
+    "Імпарт спынены памылкай: {error}": "Import stopped by an error: {error}",
+    "Файлаў: {files}; прапушчана ўжо апрацаваных: {skipped}; абноўлена ПП: {titles}; "
+    "CRN: {crn_rows} радкоў з {crn_files} файлаў; SERIES: {series_rows} значэнняў з {series_files} файлаў; "
+    "папярэджанняў: {warnings}; памылак: {errors}":
+        "Files: {files}; already processed, skipped: {skipped}; plots updated: {titles}; "
+        "CRN: {crn_rows} rows from {crn_files} files; SERIES: {series_rows} values from {series_files} files; "
+        "warnings: {warnings}; errors: {errors}",
     # --- анкета ПП: секцыі
     "Ідэнтыфікацыя": "Identification",
     "Месцазнаходжанне": "Location",

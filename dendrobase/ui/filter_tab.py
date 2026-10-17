@@ -100,6 +100,10 @@ class FilterTab:
             values = []
         return values or list(DREVESNAYA_PORODA_LIST)
 
+    def refresh_species(self) -> None:
+        """Перачытаць спіс парод з базы (пасля імпарту могуць з'явіцца новыя); уведзенае значэнне застаецца."""
+        self.combos["drevesnaya_poroda"].configure(values=[""] + self._poroda_values())
+
     def criteria(self) -> FilterCriteria | None:
         try:
             year_from, year_to = parse_int(self.year_from.get()), parse_int(self.year_to.get())

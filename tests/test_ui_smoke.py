@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+import threading
+import time
 import tkinter as tk
 
 import pytest
@@ -451,6 +453,220 @@ def test_main_starts_in_english_by_default(test_db, tmp_path, monkeypatch, quiet
     monkeypatch.setattr(tk.Tk, "mainloop", lambda self: (seen.update(language=i18n.get_language()), self.destroy()))
     assert main() == 0
     assert seen["language"] == "en"
+
+
+# ----------------------------------------------------------------- імпарт з Excel
+
+def pump_until_finished(app, dialog, timeout: float = 20.0) -> None:
+    """Пракручваць цыкл падзей Tk, пакуль фонавы паток імпарту не скончыцца і акно не забярэ вынік."""
+    deadline = time.monotonic() + timeout
+    while dialog.running and time.monotonic() < deadline:
+        app.root.update()
+        time.sleep(0.02)
+    assert not dialog.running, "імпарт не завяршыўся за адведзены час"
+
+
+def tools_menu_labels(app) -> list[str]:
+    tools = app.menubar.nametowidget(app.menubar.entrycget(2, "menu"))
+    return [tools.entrycget(i, "label") for i in range(tools.index("end") + 1) if tools.type(i) == "command"]
+
+
+def test_import_menu_item_opens_dialog_once(app):
+    assert tools_menu_labels(app)[0] == "Імпарт даных…"
+    dialog = app.open_import()
+    assert dialog is not None and dialog.dialog is app._dialogs["import"]
+    assert dialog.folder_var.get() == ""  # у наладах тэсту DENDROBASE_EXCEL_FOLDER не зададзена
+    assert dialog.stop_button.instate(["disabled"]) and not dialog.start_button.instate(["disabled"])
+    assert app.open_import() is None  # другі раз толькі падымае існуючае акно
+    dialog.dialog.destroy()
+    assert app.apply_preferences(app.preferences.__class__(language="en", theme=app.preferences.theme))
+    assert tools_menu_labels(app)[0] == "Import data…"
+
+
+def test_import_dialog_requires_existing_folder(app, tmp_path):
+    from dendrobase.ui.import_dialog import ImportDialog
+    calls = []
+    dialog = ImportDialog(app.root, app.settings, runner=lambda *a, **k: calls.append(a))
+    dialog.folder_var.set("")
+    dialog.start()
+    assert not dialog.running and dialog.status.cget("text") == "Задайце папку з Excel-файламі."
+    dialog.folder_var.set(str(tmp_path / "няма такой папкі"))
+    dialog.start()
+    assert not dialog.running and dialog.status.cget("text").startswith("Папка не існуе")
+    assert calls == []
+    dialog.dialog.destroy()
+
+
+def test_import_dialog_runs_in_background_and_refreshes_main_window(app, tmp_path):
+    """Дубль каманды імпарту дадае ПП у «базу»; акно паказвае ход працы, спіс ПП абнаўляецца сам."""
+    from dendrobase.excel_import import FileResult, ImportProgress, ImportStats
+    from dendrobase.ui.import_dialog import ImportDialog
+    seen = {}
+
+    def runner(settings, folder, *, progress, should_stop, **options):
+        seen.update(settings=settings, folder=folder, options=options, thread=threading.current_thread().name)
+        progress(ImportProgress("scan", total=3))
+        progress(ImportProgress("file", 1, 3, "P9.xlsx", FileResult("p9", crn_rows=3, series_rows=4,
+                                                                   warnings=["title, поле прапушчана: Паўната: 'x'"])))
+        app.db.titles["p9"] = {PROBE_KEY: "p9", "shirota_grd": None, "dolgota_grd": None, "glavnaya_poroda": "Е",
+                               "tip_lesa": None, "pervyy_god": 1800, "posledniy_god": 1900, "geom": None}
+        progress(ImportProgress("unchanged", 2, 3, "p1.xlsx"))
+        progress(ImportProgress("file", 3, 3, "bad.xlsx", FileResult("bad", "error", error="памылка БД: штучная")))
+        progress(ImportProgress("journal", count=1))
+        progress(ImportProgress("geometry"))
+        return ImportStats(files=2, skipped=1, title_updated=1, crn_rows=3, crn_files=1, series_rows=4, series_files=1,
+                           warnings=1, errors=1)
+
+    app.select_probe("p1")
+    dialog = ImportDialog(app.root, app.settings, on_change=app.on_import_finished, notify=app.notify, runner=runner)
+    dialog.folder_var.set(str(tmp_path))
+    dialog.overwrite_var.set(True)
+    dialog.start()
+    assert dialog.running and dialog.start_button.instate(["disabled"]) and not dialog.stop_button.instate(["disabled"])
+    assert dialog.folder_entry.instate(["disabled"]) and dialog.option_checks[0].instate(["disabled"])
+    pump_until_finished(app, dialog)
+
+    assert seen["settings"] is app.settings and seen["folder"] == tmp_path and seen["thread"] != "MainThread"
+    assert seen["options"] == {"overwrite": True, "reimport": False, "journal": True, "geometry": True}
+    text = dialog.log_text()
+    assert f"Папка: {tmp_path}" in text
+    assert "Знойдзена Excel-файлаў: 3" in text
+    assert "P9.xlsx → ПП p9: CRN 3 радкоў, SERIES 4 значэнняў" in text
+    assert "    ⚠ title, поле прапушчана: Паўната: 'x'" in text
+    assert "p1.xlsx: без змен, прапушчаны" in text
+    assert "bad.xlsx: памылка БД: штучная" in text
+    assert "№ журнала абноўлены для 1 ПП." in text and "геаметрыя не абноўлена" in text
+    assert float(dialog.progress["value"]) == 3 and float(dialog.progress["maximum"]) == 3
+    assert dialog.counter.cget("text") == "3 з 3"
+    assert dialog.status.cget("text").startswith("Імпарт завершаны з памылкамі. Файлаў: 2; прапушчана ўжо апрацаваных: 1")
+    assert str(dialog.status.cget("style")) == "Warn.TLabel"
+    assert dialog.stats.title_updated == 1 and dialog.error is None
+    assert not dialog.start_button.instate(["disabled"]) and dialog.stop_button.instate(["disabled"])
+
+    assert app.listed_probes() == ["p1", "p2", "p9"]  # галоўнае акно перачытала базу само
+    assert app.probe_list.item("p9", "values")[1:] == ("Е", "1800–1900")
+    assert app.current_probe == "p1" and app.info_tab.title_label.cget("text") == "p1"
+    assert "Імпарт завершаны з памылкамі" in status_text(app)
+    dialog.dialog.destroy()
+
+
+def test_import_dialog_keeps_unsaved_form_edits_on_refresh(app, tmp_path):
+    from dendrobase.excel_import import ImportStats
+    from dendrobase.ui.import_dialog import ImportDialog
+    app.select_probe("p1")
+    app.info_tab.form.widgets["shirota_grd"].delete(0, "end")
+    app.info_tab.form.widgets["shirota_grd"].insert(0, "55")
+    dialog = ImportDialog(app.root, app.settings, on_change=app.on_import_finished, notify=app.notify,
+                          runner=lambda *a, **k: ImportStats())
+    dialog.folder_var.set(str(tmp_path))
+    dialog.start()
+    pump_until_finished(app, dialog)
+    assert app.info_tab.is_dirty() and app.info_tab.form.get_text("shirota_grd") == "55"
+    assert dialog.status.cget("text").startswith("Імпарт завершаны. Файлаў: 0")
+    dialog.dialog.destroy()
+
+
+def slow_runner(started: threading.Event):
+    from dendrobase.excel_import import FileResult, ImportProgress, ImportStats
+
+    def runner(settings, folder, *, progress, should_stop, **options):
+        progress(ImportProgress("scan", total=5))
+        progress(ImportProgress("file", 1, 5, "a.xlsx", FileResult("a")))
+        started.set()
+        while not should_stop():  # «доўгі» імпарт: чакае запыту на спыненне
+            time.sleep(0.01)
+        return ImportStats(files=1, cancelled=True)
+
+    return runner
+
+
+def test_import_dialog_stop_button_cancels_import(app, tmp_path):
+    from dendrobase.ui.import_dialog import ImportDialog
+    started = threading.Event()
+    dialog = ImportDialog(app.root, app.settings, on_change=app.on_import_finished, notify=app.notify,
+                          runner=slow_runner(started))
+    dialog.folder_var.set(str(tmp_path))
+    dialog.start()
+    assert started.wait(5)
+    dialog.cancel()
+    assert dialog.status.cget("text").startswith("Спыняецца") and dialog.stop_button.instate(["disabled"])
+    pump_until_finished(app, dialog)
+    assert dialog.stats.cancelled
+    assert dialog.status.cget("text").startswith("Імпарт спынены. Файлаў: 1")
+    assert dialog.counter.cget("text") == "1 з 5"
+    assert "Імпарт спынены" in status_text(app)
+    assert dialog.dialog.winfo_exists()  # кнопка «Спыніць» акно не зачыняе
+    dialog.dialog.destroy()
+
+
+def test_closing_dialog_during_import_stops_it_and_closes_when_done(app, tmp_path, monkeypatch):
+    from dendrobase.ui.import_dialog import ImportDialog
+    started = threading.Event()
+    dialog = ImportDialog(app.root, app.settings, notify=app.notify, runner=slow_runner(started))
+    dialog.folder_var.set(str(tmp_path))
+    dialog.start()
+    assert started.wait(5)
+    monkeypatch.setattr(feedback.messagebox, "askyesno", lambda *a, **kw: False)  # «не спыняць»
+    dialog.close()
+    assert dialog.running and dialog.dialog.winfo_exists()
+    monkeypatch.setattr(feedback.messagebox, "askyesno", lambda *a, **kw: True)
+    dialog.close()
+    pump_until_finished(app, dialog)
+    app.root.update()
+    assert dialog.stats.cancelled and not dialog.dialog.winfo_exists()
+
+
+def test_import_dialog_reports_runner_error_and_still_refreshes(app, tmp_path):
+    from dendrobase.db import DatabaseError
+    from dendrobase.ui.import_dialog import ImportDialog
+    refreshed = []
+
+    def runner(*args, **kwargs):
+        raise DatabaseError("У базе няма табліц: crn")
+
+    dialog = ImportDialog(app.root, app.settings, on_change=lambda: refreshed.append(True), notify=app.notify,
+                          runner=runner)
+    dialog.folder_var.set(str(tmp_path))
+    dialog.start()
+    pump_until_finished(app, dialog)
+    assert dialog.status.cget("text") == "Імпарт спынены памылкай: У базе няма табліц: crn"
+    assert str(dialog.status.cget("style")) == "Error.TLabel"
+    assert isinstance(dialog.error, DatabaseError) and dialog.stats is None
+    assert refreshed == [True] and "няма табліц: crn" in status_text(app)
+    assert not dialog.start_button.instate(["disabled"])  # можна выправіць і паўтарыць
+    dialog.dialog.destroy()
+
+
+def test_import_dialog_with_real_database_shows_new_probe(clean_db, root, quiet_messages, isolated_ui_state, tmp_path):
+    """Поўная праводка: акно імпарту → excel_import.run → PostgreSQL → спіс ПП і ўкладкі галоўнага акна."""
+    from dendrobase.ui.app import DendroApp
+    from tests.test_excel_import import write_workbook
+    write_workbook(tmp_path / "PP01.xlsx", title=[("Широта,грд", 54.1), ("Долгота, грд", 26.2), ("Главная порода", "С")],
+                   crn=[("year", "raw", "std"), (1850, 1.1, 1.0), (1851, 1.2, 0.9)],
+                   series=[("year", "1", "1a"), (1850, 1.5, 1.6)])
+    app = DendroApp(root, clean_db, Settings(db=clean_db.settings))
+    assert app.listed_probes() == []
+
+    dialog = app.open_import()
+    dialog.folder_var.set(str(tmp_path))
+    dialog.start()
+    pump_until_finished(app, dialog)
+
+    assert dialog.error is None and (dialog.stats.title_updated, dialog.stats.crn_rows, dialog.stats.series_rows) == (1, 2, 2)
+    assert "PP01.xlsx → ПП pp01: CRN 2 радкоў, SERIES 2 значэнняў" in dialog.log_text()
+    assert app.listed_probes() == ["pp01"]
+    assert app.probe_list.item("pp01", "values")[1:] == ("С", "")
+    assert app.map_tab.status.cget("text") == "ПП з каардынатамі: 1 з 1"
+    assert app.select_probe("pp01")
+    assert len(app.crn_tab.tree.get_children()) == 2
+    assert list(app.series_tab.tree["columns"]) == ["year", "1", "1a"]
+    assert "Імпарт завершаны. Файлаў: 1" in status_text(app)
+
+    dialog.start()  # паўторны запуск: файл не змяніўся і прапускаецца па стане імпарту
+    pump_until_finished(app, dialog)
+    assert (dialog.stats.files, dialog.stats.skipped) == (0, 1)
+    assert "PP01.xlsx: без змен, прапушчаны" in dialog.log_text()
+    dialog.dialog.destroy()
 
 
 def test_gui_startup_does_not_import_folium_or_pandas():

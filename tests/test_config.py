@@ -56,3 +56,12 @@ def test_dotenv_file_is_loaded(tmp_path, monkeypatch):
     settings = Settings.from_env()
     assert settings.db.port == 5999
     assert settings.db.password == "from-env"  # асяроддзе мае прыярытэт над .env
+
+
+def test_relative_paths_resolve_against_project_root():
+    from dendrobase.config import PROJECT_ROOT
+    settings = Settings.from_env({"DENDROBASE_EXCEL_FOLDER": "Chronologies", "DENDROBASE_LOG_DIR": "logs/x"}, dotenv=False)
+    assert settings.excel_folder == PROJECT_ROOT / "Chronologies"
+    assert settings.log_dir == PROJECT_ROOT / "logs" / "x"
+    absolute = Settings.from_env({"DENDROBASE_EXCEL_FOLDER": "/data/excel"}, dotenv=False)
+    assert absolute.excel_folder == Path("/data/excel")

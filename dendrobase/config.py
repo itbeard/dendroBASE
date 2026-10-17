@@ -80,8 +80,8 @@ class Settings:
         if level not in _LOG_LEVELS:
             raise ConfigError(f"{ENV_PREFIX}LOG_LEVEL павінен быць адным з {', '.join(_LOG_LEVELS)}, атрымана: {level!r}")
 
-        log_dir = Path(get("LOG_DIR")).expanduser() if get("LOG_DIR") else None
-        excel_folder = Path(get("EXCEL_FOLDER")).expanduser() if get("EXCEL_FOLDER") else None
+        log_dir = _path_setting(get("LOG_DIR"))
+        excel_folder = _path_setting(get("EXCEL_FOLDER"))
 
         return cls(
             db=DatabaseSettings(
@@ -95,6 +95,14 @@ class Settings:
             log_dir=log_dir,
             excel_folder=excel_folder,
         )
+
+
+def _path_setting(value: str) -> Path | None:
+    """Шлях з налад: пусты -> None, ~ разгортваецца, адносны лічыцца ад кораня праекта (дзе ляжыць .env)."""
+    if not value:
+        return None
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else PROJECT_ROOT / path
 
 
 def dotenv_candidates() -> list[Path]:

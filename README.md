@@ -192,7 +192,7 @@ pg_restore -h localhost -p 5432 -U postgres -d postgres --clean --if-exists --no
 python -m dendrobase.excel_import --folder "D:/Dendro/Chronologies"
 ```
 
-Без `--folder` папка бярэцца з `DENDROBASE_EXCEL_FOLDER`.
+Без `--folder` папка бярэцца з `DENDROBASE_EXCEL_FOLDER` у `.env`; адносны шлях лічыцца ад кораня праекта, напрыклад `DENDROBASE_EXCEL_FOLDER=Chronologies`. Папка `Chronologies/` і ўсе `*.xlsx` у `.gitignore`, таму даныя ў рэпазіторый не трапляюць.
 
 Чаканы фармат: **адзін `.xlsx` на адну ПП**, назва файла = код ПП (пераводзіцца ў ніжні рэгістр), унутры лісты (рэгістр назваў не важны):
 

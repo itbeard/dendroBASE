@@ -48,6 +48,11 @@ def _safe_rollback(conn: PgConnection) -> None:
         pass
 
 
+def _as_float(value: object) -> float | None:
+    """Калонкі numeric psycopg2 аддае як Decimal; інтэрфейс і графік чакаюць float."""
+    return None if value is None else float(value)  # type: ignore[arg-type]
+
+
 def _year_conditions(alias: str, year_from: int | None, year_to: int | None,
                      params: list[object]) -> list[sql.Composable]:
     conditions: list[sql.Composable] = []
@@ -306,7 +311,8 @@ class DatabaseManager:
         query = sql.SQL(
             "SELECT c.year, c.num, c.raw, c.std, c.res, c.ars FROM crn c WHERE {} ORDER BY c.year"
         ).format(sql.SQL(" AND ").join(conditions))
-        return [CrnRow(*row) for row in self._fetchall(query, params)]
+        return [CrnRow(year, *(_as_float(value) for value in rest))
+                for year, *rest in self._fetchall(query, params)]
 
     def upsert_crn_rows(self, probe: str, rows: Iterable[CrnRow], *, overwrite: bool = True) -> int:
         """Запісаць радкі CRN. overwrite=False пакідае існуючыя гады некранутымі. Вяртае лік запісаных."""
@@ -351,8 +357,7 @@ class DatabaseManager:
         query = sql.SQL(
             "SELECT s.year, s.series_name, s.value FROM series s WHERE {} ORDER BY s.year, s.series_name"
         ).format(sql.SQL(" AND ").join(conditions))
-        return [SeriesValue(year, name, float(value) if value is not None else None)  # type: ignore[arg-type]
-                for year, name, value in self._fetchall(query, params)]
+        return [SeriesValue(year, name, _as_float(value)) for year, name, value in self._fetchall(query, params)]
 
     def get_series_matrix(self, probe: str, year_from: int | None = None,
                           year_to: int | None = None) -> SeriesMatrix | None:

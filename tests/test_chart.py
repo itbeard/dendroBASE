@@ -1,5 +1,6 @@
 import math
 import tkinter as tk
+from decimal import Decimal
 
 import pytest
 
@@ -51,3 +52,15 @@ def test_line_chart_draws_lines_legend_and_hover(shown_root):
     assert chart._hover_items == []
     chart.clear()
     assert chart.visible_names() == []
+
+
+def test_line_chart_accepts_decimal_values(shown_root):
+    """Значэнні numeric з базы прыходзяць як Decimal; графік не павінен падаць на арыфметыцы з float."""
+    chart = LineChart(shown_root, width=480, height=240)
+    chart.pack(fill="both", expand=True)
+    shown_root.update()
+    chart.set_data([1900, 1901, 1902], {"raw": [Decimal("1.2"), None, Decimal("1.35")]}, visible=["raw"])
+    shown_root.update()
+    assert chart.series["raw"] == [1.2, None, 1.35]
+    assert all(isinstance(value, float) for value in chart.series["raw"] if value is not None)
+    assert [item for item in chart.find_all() if chart.type(item) == "line"]

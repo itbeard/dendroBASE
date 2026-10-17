@@ -73,7 +73,9 @@ class LineChart(tk.Canvas):
                  colors: Mapping[str, str] | None = None, widths: Mapping[str, float] | None = None,
                  visible: Sequence[str] | None = None, legend: Sequence[str] | None = None) -> None:
         self.x = list(x)
-        self.series = {name: list(values) for name, values in series.items()}
+        # Decimal з базы ці int з буфера абмену: унутры графіка заўсёды float ці None
+        self.series = {name: [None if value is None else float(value) for value in values]
+                       for name, values in series.items()}
         self.colors = dict(colors or {})
         self.widths = dict(widths or {})
         self.visible = set(visible) if visible is not None else set(self.series)

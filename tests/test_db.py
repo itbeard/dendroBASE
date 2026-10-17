@@ -1,5 +1,6 @@
 """Інтэграцыйныя тэсты DatabaseManager на сапраўднай базе (гл. conftest.test_db)."""
 from datetime import date
+from decimal import Decimal
 
 import pytest
 
@@ -65,6 +66,15 @@ def test_crn_round_trip(test_db):
     assert test_db.get_crn("test01")[0].raw == 1.2
     assert test_db.delete_crn("test01", 1900) == 1
     assert [r.year for r in test_db.get_crn("test01")] == [1901]
+
+
+def test_get_crn_converts_decimal_to_float(test_db, monkeypatch):
+    """У сапраўднай базе калонкі crn бываюць numeric: psycopg2 аддае Decimal, графік чакае float."""
+    row = (1900, Decimal("5"), Decimal("1.2"), None, Decimal("0.98"), Decimal("1.01"))
+    monkeypatch.setattr(test_db, "_fetchall", lambda query, params=None: [row])
+    (result,) = test_db.get_crn("test01")
+    assert result == CrnRow(1900, 5.0, 1.2, None, 0.98, 1.01)
+    assert all(isinstance(value, float) for value in (result.num, result.raw, result.res, result.ars))
 
 
 def test_crn_requires_existing_probe(test_db):

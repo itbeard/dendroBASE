@@ -35,3 +35,6 @@ backup*.sql
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Excel-файлы з данымі
+Chronologies

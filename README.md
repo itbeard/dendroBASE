@@ -119,6 +119,8 @@ docker compose up -d --wait
 
 Лісты `crn` і `series` неабавязковыя: даныя можна дадаць пазней. Пры апрацоўцы файла апісанне ПП абнаўляецца; існуючыя значэнні CRN і SERIES замяняюцца толькі з опцыяй **Перапісваць існуючыя радкі CRN і SERIES**. Раней апрацаваныя нязменныя файлы звычайна прапускаюцца.
 
+Калі ў `.env` зададзена `DENDROBASE_EXCEL_FOLDER`, праграма пры запуску правярае гэтую папку ў фоне. Калі там ёсць файлы, якія яшчэ не імпартаваліся або змяніліся пасля імпарту, над радком стану з'яўляецца паведамленне з кнопкай **Імпартаваць…**: яна адкрывае акно імпарту з гэтай папкай. Кнопка **Схаваць** прыбірае паведамленне да наступнага запуску або імпарту.
+
 ### Логі і паведамленні пра памылкі
 
 Калі праграма паказвае акно **Нечаканая памылка**, поўны тэкст памылкі і месца ў кодзе, дзе яна ўзнікла, запісваюцца ў файл логаў. Дакладны шлях да файла паказвае меню **Даведка → Дзе файл логаў**. Звычайна ён знаходзіцца тут:
@@ -251,6 +253,8 @@ Each `.xlsx` or `.xlsm` file represents one plot. The filename without its exten
 - **`series`** — years in the first column, followed by columns headed with series names and containing annual measurements.
 
 The `crn` and `series` worksheets are optional; you can add their data later. Processing a file updates its plot description; existing CRN and SERIES values are replaced only when **Overwrite existing CRN and SERIES rows** is selected. Previously processed files that have not changed are normally skipped.
+
+If `DENDROBASE_EXCEL_FOLDER` is set in `.env`, the application checks that folder in the background on startup. When it contains files that have not been imported yet, or that changed after the import, a notice with an **Import…** button appears above the status bar; the button opens the import window for that folder. **Hide** removes the notice until the next start or import.
 
 ### Logs and error reports
 

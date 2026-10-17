@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import logging
 import re
 import tkinter as tk
 from pathlib import Path
@@ -14,10 +15,12 @@ from .. import __version__
 from ..config import Settings
 from ..db import DatabaseError, DatabaseManager
 from ..i18n import set_language, tr
+from ..import_state import PendingFiles
 from .crn_tab import CrnTab
 from .dialogs import AddProbeDialog, CrnDialog, PorodaHelpDialog, SeriesDialog, SettingsDialog, SqlQueryDialog
 from .feedback import ask_yes_no, show_error, show_info
 from .filter_tab import FilterTab
+from .import_banner import ImportBanner, PendingImportCheck
 from .import_dialog import ImportDialog
 from .info_tab import InfoTab
 from .map_tab import MapTab
@@ -28,6 +31,7 @@ from .theme import PAD, apply_theme
 from .ui_state import load_ui_state, save_ui_state
 from .widgets import PlaceholderEntry, add_tooltip, make_treeview, set_hint_sink
 
+log = logging.getLogger("dendrobase.ui")
 APP_TITLE = "DendroBASE"
 _GEOMETRY = re.compile(r"^(\d+)x(\d+)\+(-?\d+)\+(-?\d+)$")
 
@@ -43,6 +47,8 @@ class DendroApp:
         self._search_after: str | None = None
         self._dialogs: dict[str, tk.Toplevel] = {}
         self._syncing_list = False
+        self._pending_import: PendingFiles | None = None  # вынік апошняй праверкі папкі з Excel
+        self._import_check: PendingImportCheck | None = None
         self.state = load_ui_state()
         self.preferences = (preferences or load_preferences()).normalized()
         set_language(self.preferences.language)
@@ -62,6 +68,7 @@ class DendroApp:
         if isinstance(last, str) and last in self.listed_probes():
             self.select_probe(last)
         root.after(50, lambda: self._restore_sash(self.state.get("sash")))
+        self.check_pending_import()
 
     # ------------------------------------------------------------------ стан
     def _restore_geometry(self) -> None:
@@ -193,7 +200,13 @@ class DendroApp:
         self.status = StatusBar(self.root, connection=connection, postgis=postgis)
         self.status.pack(side="bottom", fill="x")
         set_hint_sink(self.root, self.status.show_hint)
-        ttk.Separator(self.root, orient="horizontal").pack(side="bottom", fill="x")
+        separator = ttk.Separator(self.root, orient="horizontal")
+        separator.pack(side="bottom", fill="x")
+        # паласа «ёсць файлы для імпарту» над радком стану; відаць толькі пакуль ёсць што імпартаваць
+        self.import_banner = ImportBanner(self.root, on_import=self.open_import,
+                                          on_dismiss=self.dismiss_import_banner, after_widget=separator)
+        if self._pending_import:
+            self.import_banner.show(self._pending_import)
 
         self.paned = ttk.PanedWindow(self.root, orient="horizontal")
         self.paned.pack(fill="both", expand=True)
@@ -376,6 +389,7 @@ class DendroApp:
         self.refresh_probes()
         self.map_tab.refresh()
         self.filter_tab.refresh_species()
+        self.check_pending_import()  # стан імпарту змяніўся: паласа абновіцца або знікне
         probe = self.current_probe
         if not probe:
             return
@@ -384,6 +398,39 @@ class DendroApp:
             self.series_tab.set_probe(probe)
         else:
             self.select_probe(probe, force=True)
+
+    # ------------------------------------------------------ файлы для імпарту
+    def check_pending_import(self) -> None:
+        """Параўнаць папку DENDROBASE_EXCEL_FOLDER са станам імпарту (у фоне) і паказаць паласу, калі ёсць што імпартаваць.
+
+        Выклікаецца на старце і пасля кожнага імпарту: тады паласа абнаўляецца або знікае.
+        """
+        folder = self.settings.excel_folder if self.settings else None
+        if folder is None or not folder.is_dir():
+            return
+        if self._import_check is not None:
+            self._import_check.cancel()  # папярэдняя праверка яшчэ ідзе: яе вынік ужо састарэў
+        try:
+            probes = set(self.db.get_all_probes())
+        except DatabaseError as exc:
+            log.warning("Папка з Excel-файламі не праверана: спіс ПП не прачытаны (%s)", exc)
+            return
+        self._import_check = PendingImportCheck(self.root, folder, probes, self._on_import_check_done)
+        self._import_check.start()
+
+    def _on_import_check_done(self, pending: PendingFiles | None) -> None:
+        self._pending_import = pending if pending else None
+        if self._pending_import is None:
+            self.import_banner.hide()
+            return
+        log.info("Папка %s: файлаў для імпарту %d (новых %d, змененых %d)", pending.folder, pending.count,
+                 len(pending.new), len(pending.changed))
+        self.import_banner.show(self._pending_import)
+
+    def dismiss_import_banner(self) -> None:
+        """Схаваць паласу да наступнай праверкі (перазапуск або імпарт)."""
+        self._pending_import = None
+        self.import_banner.hide()
 
     def open_settings(self) -> None:
         self._open_dialog("settings", lambda: SettingsDialog(self.root, self.preferences, on_apply=self.apply_preferences))

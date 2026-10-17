@@ -697,3 +697,117 @@ def test_tk9_touchpad_scrolls_form_under_pointer(root):
     label.event_generate("<TouchpadScroll>", delta=(-20 & 0xffff),
                          rootx=label.winfo_rootx() + 2, rooty=label.winfo_rooty() + 2)
     assert 0 < scroll.canvas.yview()[0] < 0.1
+
+
+# ----------------------------------------------------- паласа «ёсць файлы для імпарту»
+
+def wait_for_import_check(app, timeout: float = 10.0) -> None:
+    """Пракручваць цыкл падзей, пакуль фонавая праверка папкі не аддасць вынік галоўнаму акну."""
+    deadline = time.monotonic() + timeout
+    while app._import_check is not None and not app._import_check.finished and time.monotonic() < deadline:
+        app.root.update()
+        time.sleep(0.02)
+    assert app._import_check is None or app._import_check.finished, "праверка папкі не скончылася"
+
+
+def mark_imported(folder, name: str, probe: str) -> None:
+    from dendrobase.import_state import ImportState, file_digest
+    state = ImportState.load(folder)
+    state.files[name] = {"status": "done", "probe": probe, "sha256": file_digest(folder / name),
+                         "overwrite": False, "warnings": []}
+    state.save()
+
+
+@pytest.fixture()
+def excel_folder(tmp_path):
+    """Папка з адным ужо імпартаваным файлам (p1) і адным новым (new)."""
+    folder = tmp_path / "excel"
+    folder.mkdir()
+    (folder / "p1.xlsx").write_bytes(b"p1")
+    (folder / "new.xlsx").write_bytes(b"new")
+    mark_imported(folder, "p1.xlsx", "p1")
+    return folder
+
+
+@pytest.fixture()
+def app_with_folder(root, quiet_messages, isolated_ui_state, excel_folder):
+    from dendrobase.ui.app import DendroApp
+    return DendroApp(root, FakeDb(), Settings(db=DatabaseSettings(), excel_folder=excel_folder))
+
+
+def test_describe_pending_variants():
+    from pathlib import Path
+    from dendrobase.import_state import PendingFiles
+    from dendrobase.ui.import_banner import describe_pending
+    folder = Path("x")
+    assert describe_pending(PendingFiles(folder, new=("a",))) == "Знойдзены новыя Excel-файлы для імпарту: 1."
+    assert describe_pending(PendingFiles(folder, changed=("a", "b"))) == "Знойдзены змененыя Excel-файлы для імпарту: 2."
+    assert (describe_pending(PendingFiles(folder, new=("a",), changed=("b",)))
+            == "Знойдзены Excel-файлы для імпарту: новых 1, змененых 1.")
+
+
+def test_no_excel_folder_means_no_check_and_no_banner(app):
+    assert app._import_check is None and not app.import_banner.visible
+
+
+def test_startup_check_shows_banner_and_its_buttons_work(app_with_folder, excel_folder):
+    app = app_with_folder
+    assert not app.import_banner.visible  # пакуль паток правярае папку, паласы няма
+    wait_for_import_check(app)
+    banner = app.import_banner
+    assert banner.visible and app._pending_import.new == ("new.xlsx",)
+    assert banner.message.cget("text") == "Знойдзены новыя Excel-файлы для імпарту: 1."
+    assert banner.detail.cget("text") == "Папка: excel"
+    app.root.update_idletasks()
+    assert banner.winfo_y() < app.status.winfo_y()  # паласа над радком стану
+
+    banner.import_button.invoke()
+    dialog = app._dialogs["import"]
+    assert dialog.winfo_exists() and dialog.title() == "Імпарт даных з Excel"
+    assert banner.visible  # адкрытае акно імпарту паласу не хавае: імпарт яшчэ не зроблены
+    dialog.destroy()
+
+    banner.dismiss_button.invoke()
+    assert not banner.visible and app._pending_import is None
+
+
+def test_banner_survives_rebuild_and_hides_after_import(app_with_folder, excel_folder):
+    from dendrobase.ui.preferences import Preferences
+    app = app_with_folder
+    wait_for_import_check(app)
+    assert app.apply_preferences(Preferences(language="en", theme=app.preferences.theme))
+    assert app.import_banner.visible
+    assert app.import_banner.message.cget("text") == "New Excel files found for import: 1."
+    assert app.apply_preferences(Preferences(language="be", theme=app.preferences.theme))
+
+    # імпарт прайшоў: файл запісаны ў стан, ПП з'явілася ў базе; паласа знікае пасля паўторнай праверкі
+    mark_imported(excel_folder, "new.xlsx", "new")
+    app.db.titles["new"] = {PROBE_KEY: "new", "shirota_grd": None, "dolgota_grd": None, "glavnaya_poroda": None,
+                            "tip_lesa": None, "pervyy_god": None, "posledniy_god": None, "geom": None}
+    app.on_import_finished()
+    assert app.import_banner.visible  # да заканчэння праверкі старое паведамленне застаецца
+    wait_for_import_check(app)
+    assert not app.import_banner.visible and app._pending_import is None
+
+
+def test_banner_reports_changed_files_after_cancelled_import(app_with_folder, excel_folder):
+    app = app_with_folder
+    wait_for_import_check(app)
+    (excel_folder / "p1.xlsx").write_bytes(b"p1 changed")
+    app.on_import_finished()
+    wait_for_import_check(app)
+    assert app.import_banner.message.cget("text") == "Знойдзены Excel-файлы для імпарту: новых 1, змененых 1."
+
+
+def test_unreadable_folder_is_logged_not_shown(root, quiet_messages, isolated_ui_state, tmp_path, caplog):
+    """Папка з налад знікла да старту або нечытальная: без паласы і без памылак у акне."""
+    from dendrobase.ui.app import DendroApp
+    missing = tmp_path / "знікла"
+    app = DendroApp(root, FakeDb(), Settings(db=DatabaseSettings(), excel_folder=missing))
+    assert app._import_check is None and not app.import_banner.visible
+    missing.mkdir()
+    app.check_pending_import()
+    missing.rmdir()  # знікла ўжо падчас праверкі ў патоку
+    wait_for_import_check(app)
+    assert not app.import_banner.visible and "не праверана" in caplog.text
+    assert quiet_messages == []

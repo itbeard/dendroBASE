@@ -446,6 +446,18 @@ _EN: dict[str, str] = {
         "Files: {files}; already processed, skipped: {skipped}; plots updated: {titles}; "
         "CRN: {crn_rows} rows from {crn_files} files; SERIES: {series_rows} values from {series_files} files; "
         "warnings: {warnings}; errors: {errors}",
+    # --- паласа «ёсць файлы для імпарту» (галоўнае акно)
+    "Знойдзены новыя Excel-файлы для імпарту: {count}.": "New Excel files found for import: {count}.",
+    "Знойдзены змененыя Excel-файлы для імпарту: {count}.": "Changed Excel files found for import: {count}.",
+    "Знойдзены Excel-файлы для імпарту: новых {new}, змененых {changed}.":
+        "Excel files found for import: {new} new, {changed} changed.",
+    "Схаваць": "Hide",
+    "Паведамленне знікне да наступнага запуску праграмы або імпарту.":
+        "The notice goes away until the program is started or an import is run again.",
+    "Імпартаваць…": "Import…",
+    "Ctrl+I. Адкрывае акно імпарту з гэтай папкай.": "Ctrl+I. Opens the import window for this folder.",
+    "Новыя: яшчэ не імпартаваліся. Змененыя: зменены пасля імпарту, скончыліся памылкай або іх ПП няма ў базе.":
+        "New: not imported yet. Changed: modified after the import, failed, or their plot is missing from the database.",
     # --- анкета ПП: секцыі
     "Ідэнтыфікацыя": "Identification",
     "Месцазнаходжанне": "Location",

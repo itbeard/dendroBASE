@@ -1,342 +1,239 @@
 # DendroBASE
 
-Настольная праграма для вядзення базы дэндрахраналагічных даных Беларусі. Даныя захоўваюцца ў PostgreSQL (з пашырэннем PostGIS для геаметрыі), інтэрфейс напісаны на Python + Tkinter для Windows, macOS і Linux. На macOS патрэбны Tk 8.6.13 або навейшы.
+[Беларуская](#беларуская) · [English](#english)
 
-У базе тры віды даных:
+## Беларуская
 
-- **Пробныя плошчы (ПП)**: месцазнаходжанне, апісанне дрэвастану і метаданыя дэндрахраналагічнай шкалы (табліца `title`).
-- **Абагульненыя храналогіі CRN** па гадах: `num`, `raw`, `std`, `res`, `ars` (табліца `crn`).
-- **Індывідуальныя серыі** прыросту асобных дрэў або кернаў па гадах (табліца `series`).
+DendroBASE — настольная праграма для працы з дэндрахраналагічнымі данымі Беларусі. Яна дапамагае захоўваць апісанні пробных плошчаў, храналогіі і вымярэнні гадавых кольцаў у адной базе, знаходзіць патрэбныя даныя і рыхтаваць выбаркі для даследаванняў. Працуе на Windows, macOS і Linux.
 
-## Магчымасці
+### Што можна рабіць
 
-- **Спіс ПП** з кодам, пародай і гадамі шкалы, жывы пошук па коду, сартаванне клікам па загалоўку.
-- **Інфармацыя аб ПП**: картка з назвай і кароткім зводам (від, парода, гады, колькасць дрэў, каардынаты), 60 палёў згрупаваны ў секцыі (ідэнтыфікацыя, месцазнаходжанне, раянаванне, дрэвастан, шкала, аўтары, нататкі). Захоўваюцца толькі змененыя палі, памылковыя значэнні падсвечваюцца на месцы, ёсць рэжым «толькі запоўненыя палі» і абарона ад страты незахаваных змен.
-- **CRN Храналогія**: графік raw/std/res/ars па гадах з курсорам-падказкай, табліца з лікамі, выраўнаванымі па коме, фільтр па гадах, рэдагаванне і выдаленне радкоў, экспарт у CSV.
-- **SERIES**: графік усіх серый з вылучэннем адной, матрыца «год × серыя» з натуральным парадкам назваў (1, 1a, 2, 10), экспарт.
-- **Фільтры і пошук**: выбарка CRN па дрэвавай пародзе, геабатанічнай зоне, падзоне, акрузе, раёне, тыпу лесу і дыяпазоне гадоў; Enter запускае пошук; вынік капіюецца ў буфер або захоўваецца ў CSV.
-- **Мапа**: спіс ПП з каардынатамі і інтэрактыўная мапа (folium, падкладка OpenTopoMap на даных OpenStreetMap) у браўзеры; падвойны клік у спісе адкрывае ПП.
-- **Майстар новай ПП** у тры крокі: анкета → CRN з буфера абмену → SERIES з буфера абмену. Загаловак у CRN неабавязковы, дзесятковая коска прымаецца, памылкі паказваюцца адразу.
-- **Імпарт даных з Excel** (меню «Інструменты → Імпарт даных…», `Ctrl+I`): папка, опцыі каманды імпарту, індыкатар і журнал ходу працы па кожным файле, кнопка «Спыніць». Імпарт ідзе ў фоне, а пасля завяршэння спіс ПП, укладкі і мапа абнаўляюцца самі.
-- **SQL-запыт** (меню «Інструменты») з пацверджаннем для запытаў, якія мяняюць даныя.
-- **Налады** (меню «Інструменты → Налады…», `Ctrl+,`): мова інтэрфейсу (англійская па змаўчанні або беларуская) і тэма (як у сістэме, светлая, цёмная). Прымяняюцца адразу і запамінаюцца паміж запускамі.
-- Радок стану з апошнім дзеяннем, бягучай ПП і падключэннем замест усплывальных вокнаў; усплывальныя вокны толькі для памылак і пацверджанняў.
-- Гарачыя клавішы, падказкі пры навядзенні, запамінанне памеру акна, раздзяляльніка і апошняй ПП.
-- Той жа імпарт з каманднага радка (`python -m dendrobase.excel_import`) для скрыптоў і планавальніка.
-- Усе дзеянні і памылкі пішуцца ў файл логаў.
+- **Весці карткі пробных плошчаў (ПП):** месцазнаходжанне, каардынаты, дрэвавыя пароды, апісанне дрэвастану, звесткі пра ўзоры і аўтараў.
+- **Праглядаць храналогіі CRN:** абагульненыя даныя па гадах у табліцы і на графіку (`raw`, `std`, `res`, `ars`), з магчымасцю рэдагаваць запісы.
+- **Праглядаць індывідуальныя серыі SERIES:** вымярэнні асобных дрэў або кернаў, параўноўваць іх на графіку і выбіраць дыяпазон гадоў.
+- **Шукаць і адбіраць даныя** па коду ПП, пародзе, геабатанічным раянаванні, тыпе лесу і гадах.
+- **Дадаваць даныя з Excel** праз імпарт файлаў або капіраванне табліц. Вынікі можна капіяваць назад у Excel ці захоўваць у CSV.
+- **Бачыць пробныя плошчы на мапе** па іх каардынатах. Мапа адкрываецца ў браўзеры і патрабуе інтэрнэту; яе можна захаваць як HTML.
 
-Інтэрфейс цалкам на абранай мове: англійскай (па змаўчанні) або беларускай, уключна з подпісамі палёў анкеты і назвамі парод у даведцы. Значэнні ў базе застаюцца такімі, якімі яны ўведзены і імпартаваны з Excel: спісы падказак для зоны, падзоны, акругі, раёна, даступнасці і тыпу ўзораў па-руску, назвы слупкоў у БД транслітараваныя.
+### Як змяніць мову інтэрфейсу
 
-## Структура праекту
+Пры першым запуску інтэрфейс ангельскі. Каб пераключыцца на беларускую:
 
-```
-dendrobase/                 Python-пакет
-  __main__.py               кропка ўваходу: python -m dendrobase
-  config.py                 налады з .env / пераменных асяроддзя
-  logging_setup.py          логі ў файл (з ратацыяй) і ў кансоль
-  reference.py              даведнікі (пароды, раянаванне) і апісанне палёў title
-  i18n.py                   мовы інтэрфейсу: tr() і каталог англійскіх перакладаў
-  models.py                 тыпы даных: CrnRow, SeriesValue, ProbePoint, FilterCriteria...
-  parsing.py                разбор лікаў, дат, табліц з буфера абмену (без Tk і БД)
-  db.py                     доступ да PostgreSQL, транзакцыі, уласныя выключэнні
-  maps.py                   пабудова мапы folium
-  excel_import.py           імпарт з Excel + каманда excel_import
-  paths.py                  платформенныя папкі для логаў і стану інтэрфейсу
-  ui/                       Tkinter
-    app.py                  галоўнае акно, меню, гарачыя клавішы
-    theme.py                тэма ttk: як у сістэме / светлая / цёмная, шрыфты, палітра
-    preferences.py          налады карыстальніка: мова і тэма
-    runtime.py              праверка версіі Tk і дыягностыка асяроддзя
-    title_form.py           форма палёў ПП па секцыях (агульная для анкеты і ўкладкі)
-    info_tab.py, crn_tab.py, series_tab.py, filter_tab.py, map_tab.py
-    chart.py                лінейны графік на Canvas (храналогіі, серыі)
-    dialogs.py              майстар новай ПП, увод CRN / SERIES, SQL-запыт, даведка пародаў, налады
-    import_dialog.py        акно «Імпарт даных з Excel»: папка, опцыі, ход працы ў фонавым патоку
-    widgets.py              табліцы з сартаваннем і экспартам, падказкі, пракрутка, буфер абмену
-    statusbar.py            радок стану
-    ui_state.py             запамінанне памеру акна, апошняй ПП, мовы і тэмы
-    feedback.py             паведамленні карыстальніку + логі
-tests/                      pytest: unit, інтэграцыйныя (PostgreSQL) і дымавыя (Tk)
-schema.sql                  схема базы даных
-docker-compose.yml          PostgreSQL + PostGIS у Docker, налады з .env
-run_app.py                  лаўнчар для запуску двайным клікам
-.env.example                узор файла налад
-requirements.txt            залежнасці; requirements-dev.txt дадае pytest
+1. Адкрыйце **Tools → Settings…**.
+2. У раздзеле **Interface language** выберыце **Беларуская**.
+3. Націсніце **Save**.
+
+Каб вярнуць ангельскую, адкрыйце **Інструменты → Налады…**, выберыце **English** і націсніце **Захаваць**. Налады таксама адкрываюцца праз `Ctrl+,` (на macOS — `Cmd+,`).
+
+Мова змяняецца адразу і запамінаецца. Там жа можна выбраць светлую, цёмную або сістэмную тэму. Уведзеныя і імпартаваныя даныя застаюцца на сваёй мове.
+
+### Устаноўка і запуск
+
+Падрыхтоўка патрэбная толькі адзін раз. Праграма выкарыстоўвае Python, а даныя захоўвае ў PostgreSQL з PostGIS. Ніжэй — запуск базы праз Docker, які стварае яе аўтаматычна.
+
+#### 1. Падрыхтуйце камп'ютар
+
+- **Windows і macOS:** усталюйце [Python](https://www.python.org/downloads/) версіі 3.10 або навейшай з кампанентам Tcl/Tk (Tkinter), патрэбным для вокнаў праграмы. На macOS патрэбны Tk 8.6.13 або навейшы; версію можна паглядзець у акне, якое адкрывае каманда `python3 -m tkinter`.
+- **Linux:** усталюйце Python 3.10 або навейшы, Tkinter і падтрымку віртуальных асяроддзяў. Для Ubuntu / Debian каманда прыведзена ніжэй.
+- Усталюйце і запусціце [Docker Desktop](https://docs.docker.com/desktop/), выбраўшы сваю аперацыйную сістэму.
+- Спампуйце і распакуйце файлы праекта. На GitHub гэта **Code → Download ZIP**.
+
+#### 2. Падрыхтуйце праграму
+
+Адкрыйце **PowerShell** на Windows або **Тэрмінал** на macOS / Linux. Перайдзіце ў папку праекта, дзе ляжыць `README.md`: увядзіце `cd "шлях да папкі праекта"`, падставіўшы свой шлях. Далей выконвайце каманды па чарзе.
+
+**Windows (PowerShell):**
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
+notepad .env
 ```
 
-Слаі не змешваюцца: `parsing`, `db`, `maps`, `excel_import` не ведаюць пра Tkinter, а `ui` не ведае пра psycopg2. Таму логіка тэстуецца без дысплея і без базы.
-
-## Запуск лакальна
-
-Патрэбны Python 3.10 або навейшы з Tkinter і PostgreSQL 13 або навейшы, пажадана з PostGIS.
-
-### 1. PostgreSQL і PostGIS
-
-**Варыянт А: Docker (рэкамендуецца).** Адна каманда дае PostgreSQL 17 з PostGIS на любой АС, табліцы ствараюцца аўтаматычна. Патрэбны [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+**macOS:**
 
 ```bash
-cp .env.example .env             # запоўніце пароль (гл. крок 4), порт можна пакінуць 5432
-docker compose up -d             # пры першым запуску выканае schema.sql
-docker compose ps                # статус healthy = сервер гатовы
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env
+open -e .env
 ```
 
-Выкарыстоўваецца вобраз `imresamu/postgis` (тая ж зборка, што афіцыйны `postgis/postgis`, але з падтрымкай arm64), таму ён працуе і на Intel/AMD, і на Apple Silicon без эмуляцыі. Compose чытае той жа `.env`, што і праграма, таму порт, база, карыстальнік і пароль задаюцца адзін раз. Даныя жывуць у томе `dendrobase_pgdata` і перажываюць перазапускі; `docker compose down -v` выдаляе іх. Крок 2 пры гэтым варыянце прапускаецца.
-
-**Варыянт Б: устаноўка на машыну.**
-
-- **Windows**: усталёўшчык з [postgresql.org](https://www.postgresql.org/download/windows/), PostGIS дадаецца праз Stack Builder у канцы ўстаноўкі.
-- **macOS** (Homebrew): `brew install postgresql@15 postgis`, затым `brew services start postgresql@15`.
-- **Linux** (Debian/Ubuntu): `sudo apt install postgresql postgis`.
-
-База павінна быць створана з кадыроўкай UTF8 і не-`C` лакаллю (напрыклад `en_US.UTF-8` або `ru_RU.UTF-8`), інакш пошук без уліку рэгістру (`ILIKE`) не будзе працаваць для кірыліцы. Стандартныя ўсталёўшчыкі і Docker-вобраз робяць так самі.
-
-### 2. Стварэнне табліц
-
-Калі ў вас яшчэ няма базы з табліцамі `title`, `crn`, `series`:
+**Linux (Ubuntu / Debian):**
 
 ```bash
-psql -h localhost -p 5432 -U postgres -d postgres -f schema.sql
+sudo apt update
+sudo apt install python3 python3-venv python3-tk
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env
+nano .env
 ```
 
-Без PostGIS закаментуйце блок «PostGIS» у канцы `schema.sql`. Праграма будзе працаваць, але кнопкі «Абнавіць геаметрыю» пакажуць памылку.
+У іншых дыстрыбутывах Linux усталюйце гэтыя кампаненты праз свой менеджар пакетаў, затым выканайце каманды пачынаючы з `python3 -m venv .venv`.
 
-Схема ў `schema.sql` адноўлена па кодзе. Калі ў вас ужо ёсць дзеючая база, гэты крок прапускаецца, а схему лепш замяніць рэальнай: `pg_dump --schema-only`.
+#### 3. Задайце пароль базы
 
-### 3. Python-асяроддзе
+Апошняя каманда адкрые файл налад `.env`. У радку `DENDROBASE_DB_PASSWORD=` дапішыце свой пароль пасля знака `=`. Астатнія налады пакіньце як ёсць. Захавайце файл і зачыніце рэдактар. У nano: `Ctrl+O`, `Enter`, затым `Ctrl+X`.
 
-```bash
-python -m venv venv
-venv\Scripts\activate            # Windows
-source venv/bin/activate         # macOS / Linux
-pip install -r requirements.txt
+Калі ў вашай установе ўжо ёсць падрыхтаваная база DendroBASE, запішыце ў `.env` яе адрас, порт, назву базы, імя карыстальніка і пароль, атрыманыя ў адміністратара. У гэтым выпадку Docker і каманда `docker compose` не патрэбныя.
+
+#### 4. Запусціце DendroBASE
+
+Пераканайцеся, што Docker Desktop працуе. У той жа папцы праекта выканайце:
+
+**Windows (PowerShell):**
+
+```powershell
+docker compose up -d --wait
+.\.venv\Scripts\python.exe -m dendrobase
 ```
 
-Tkinter уваходзіць у стандартную бібліятэку, але не ва ўсе зборкі Python:
-
-- Windows: уваходзіць у стандартны ўсталёўшчык з python.org.
-- macOS: Python з python.org ужо змяшчае Tk; для Homebrew-пітона `brew install python-tk@3.12` (пад сваю версію).
-- Linux: `sudo apt install python3-tk`.
-
-На macOS праверце менавіта версію **Tk**: `python -m tkinter` паказвае яе ў тэставым акне.
-Tk ніжэй за 8.6.13 не падтрымліваецца з-за страты клікаў (падрабязнасці і варыянт з `uv` — ніжэй).
-
-### 4. Налады
-
-Скапіруйце `.env.example` у `.env` і запоўніце падключэнне:
+**macOS / Linux:**
 
 ```bash
-cp .env.example .env             # Windows: copy .env.example .env
-```
-
-| Пераменная | Па змаўчанні | Прызначэнне |
-|---|---|---|
-| `DENDROBASE_DB_HOST` | `localhost` | Хост PostgreSQL |
-| `DENDROBASE_DB_PORT` | `5432` | Порт |
-| `DENDROBASE_DB_NAME` | `postgres` | База даных |
-| `DENDROBASE_DB_USER` | `postgres` | Карыстальнік |
-| `DENDROBASE_DB_PASSWORD` | (пуста) | Пароль |
-| `DENDROBASE_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
-| `DENDROBASE_LOG_DIR` | папка АС | Папка логаў, гл. ніжэй |
-| `DENDROBASE_EXCEL_FOLDER` | (пуста) | Папка з Excel для імпарту |
-
-Файл `.env` шукаецца ў бягучай папцы і ў корані праекту. Пераменныя асяроддзя маюць прыярытэт над `.env`. Файл `.env` не трапляе ў git.
-
-### 5. Запуск
-
-```bash
-python -m dendrobase
-```
-
-Альтэрнатывы: двайны клік па `run_app.py`, або на Windows `pythonw run_app.py`, каб не адкрывалася кансоль. Пасля `pip install -e .` з'яўляюцца каманды `dendrobase` і `dendrobase-import`.
-
-Калі падключыцца да БД не ўдалося або ў базе няма патрэбных табліц, праграма паказвае зразумелае паведамленне з падказкай і завяршаецца.
-
-### Перанос даных з іншай машыны
-
-Docker або новая ўстаноўка даюць пусты сервер. Каб перанесці існуючую базу (напрыклад, з Windows-машыны, дзе яна вялася), зрабіце дамп там і аднавіце яго тут:
-
-```bash
-# на машыне з данымі
-pg_dump -h localhost -p 5433 -U postgres -Fc -f dendrobase.dump postgres
-
-# на новай машыне, сервер у Docker
-docker compose exec -T db pg_restore -U postgres -d postgres --clean --if-exists --no-owner < dendrobase.dump
-
-# на новай машыне, сервер усталяваны лакальна
-pg_restore -h localhost -p 5432 -U postgres -d postgres --clean --if-exists --no-owner dendrobase.dump
-```
-
-Паведамленні пра тое, што пашырэнне `postgis` ужо існуе, можна ігнараваць. Імя базы і порт падстаўце свае.
-
-## Інтэрфейс
-
-Злева спіс пробных плошчаў з пошукам, справа ўкладкі з данымі выбранай ПП, унізе радок стану. Раздзяляльнік паміж панэлямі можна перацягваць, памер акна і апошняя ПП запамінаюцца.
-
-### Мова і тэма
-
-Меню «Інструменты → Налады…» (`Ctrl+,`, на macOS таксама «Preferences…» у меню праграмы):
-
-- **Мова інтэрфейсу**: English (па змаўчанні пры першым запуску) або беларуская. Перакладаюцца меню, укладкі, кнопкі, падказкі, паведамленні, подпісы палёў анкеты і назвы парод у даведцы. Значэнні з базы (зоны, акругі, тып лесу, апісанні) паказваюцца як ёсць.
-- **Тэма**: як у сістэме, светлая або цёмная. На macOS светлы і цёмны выгляд натыўныя; на Windows і Linux натыўная тэма ttk цёмнай не бывае, таму для цёмнай выкарыстоўваецца ўласная тэма на базе `clam`.
-
-Налады прымяняюцца адразу (галоўнае акно перабудоўваецца, бягучая ПП захоўваецца; ужо адкрытыя вокны CRN, SERIES і SQL застаюцца на ранейшай мове да закрыцця) і запісваюцца ў `ui_state.json` разам з памерам акна:
-
-- Windows: `%LOCALAPPDATA%\DendroBASE\ui_state.json`
-- macOS: `~/Library/Application Support/DendroBASE/ui_state.json`
-- Linux: `~/.local/state/dendrobase/ui_state.json`
-
-Калі ў кодзе з'яўляецца новы радок, яго трэба абгарнуць у `tr("...")` і дадаць пераклад у `dendrobase/i18n.py`; тэст `tests/test_i18n.py` правярае, што каталог поўны і без лішніх запісаў. Каманда імпарту з Excel заўсёды піша па-беларуску.
-
-| Клавішы | Дзеянне |
-|---|---|
-| `Ctrl+N` | новая пробная плошча |
-| `Ctrl+F` | курсор у поле пошуку, `Esc` ачышчае пошук |
-| `Ctrl+S` | захаваць змены на ўкладцы «Інфармацыя аб ПП» |
-| `F5` | абнавіць спіс |
-| `Enter` | прымяніць фільтр па гадах, запусціць пошук, захаваць радок CRN |
-| `Ctrl+V` | уставіць табліцу ў вокнах CRN і SERIES |
-| `Ctrl+Enter` | выканаць SQL-запыт |
-| `Ctrl+I` | імпарт даных з Excel |
-| `Ctrl+,` | налады (мова, тэма) |
-| `Ctrl+Q` | выйсці |
-
-На macOS замест `Ctrl` працуе `Cmd`. Табліцы сартуюцца клікам па загалоўку, лікавыя слупкі выраўнаваны ўправа. Колеры палос і вылучанага радка разлічваюцца ад фону бягучай тэмы, таму светлая і цёмная тэмы выглядаюць аднолькава чытэльна. Кнопкі «Капіраваць» кладуць табліцу ў буфер з табуляцыямі (адразу ўстаўляецца ў Excel), «Экспарт…» захоўвае CSV або тэкставы файл у UTF-8.
-
-## Логі
-
-Логі пішуцца адначасова ў кансоль і ў файл `dendrobase.log` (каманда імпарту: `excel_import.log`) з ратацыяй па 1 МБ. Папка па змаўчанні:
-
-- Windows: `%LOCALAPPDATA%\DendroBASE\logs`
-- macOS: `~/Library/Logs/DendroBASE`
-- Linux: `~/.local/state/dendrobase/logs`
-
-Шлях да файла паказвае меню «Даведка → Дзе файл логаў». Усе паведамленні карыстальніку, SQL-памылкі і неапрацаваныя выключэнні трапляюць у лог з трасіроўкай.
-
-## Імпарт з Excel
-
-Два ўваходы ў адзін і той жа код (`dendrobase/excel_import.py`):
-
-- **З праграмы**: меню «Інструменты → Імпарт даных…» (`Ctrl+I`). У акне задаецца папка (па змаўчанні з `DENDROBASE_EXCEL_FOLDER`), сцяжкамі выбіраюцца опцыі каманды (`--overwrite`, `--reimport`, нумары журнала, геаметрыя), кнопка «Пачаць імпарт» запускае працу ў фонавым патоку з уласным злучэннем з БД, таму галоўнае акно не замірае. Індыкатар паказвае, колькі файлаў пройдзена, а журнал у акне — радок па кожным файле: колькі радкоў CRN і значэнняў SERIES запісана, якія палі прапушчаны, што за памылка. «Спыніць» перапыняе імпарт пасля бягучага файла; зробленае застаецца ў базе і ў стане імпарту. Пасля завяршэння (і пасля памылкі) спіс ПП, укладкі бягучай ПП, спіс парод у фільтрах і мапа перачытваюць базу самі. Крок `--geobotany` з акна недаступны: ён сцірае геабатанічныя палі ва ўсіх ПП і застаецца толькі ў камандным радку.
-- **З каманднага радка**, для скрыптоў і планавальніка:
-
-```bash
-python -m dendrobase.excel_import --folder "D:/Dendro/Chronologies"
-```
-
-Без `--folder` папка бярэцца з `DENDROBASE_EXCEL_FOLDER` у `.env`; адносны шлях лічыцца ад кораня праекта, напрыклад `DENDROBASE_EXCEL_FOLDER=Chronologies`. Папка `Chronologies/` і ўсе `*.xlsx` у `.gitignore`, таму даныя ў рэпазіторый не трапляюць.
-
-Чаканы фармат: **адзін `.xlsx` на адну ПП**, назва файла = код ПП (пераводзіцца ў ніжні рэгістр), унутры лісты (рэгістр назваў не важны):
-
-- `title`: два слупкі «параметр | значэнне», параметры па-руску, як у анкеце ПП (`Широта,грд`, `Главная порода`, `Первый год`...). Адпаведнасць параметраў слупкам БД зададзена ў `reference.EXCEL_PARAM_MAPPING`.
-- `crn`: першы слупок год, далей слупкі `num`, `raw`, `std`, `res`, `ars` (любыя з іх могуць адсутнічаць, парадак не важны).
-- `series`: першы слупок год, наступныя слупкі — назвы серый (тэкст, напрыклад `1`, `1a`, `13b`).
-
-Неабавязкова: файл `dendro_point_living.xlsx` у той жа папцы, з якога бярэцца нумар журнала (`n_journal`) па коду ПП.
-
-Што робіць каманда па парадку:
-
-1. Правярае, што табліцы існуюць, і дадае ключы, унікальныя абмежаванні і індэксы, калі іх няма (`--no-constraints` адключае).
-2. Для кожнага новага або змененага файла (гл. «Паўторны запуск») абнаўляе радок у `title` і дадае радкі ў `crn` і `series`. Існуючыя радкі CRN і SERIES **не** перапісваюцца, калі не зададзены `--overwrite`.
-3. Запаўняе `n_journal` з `dendro_point_living.xlsx` (`--no-journal` адключае).
-4. Разлічвае `geom` для ПП, у якіх ён яшчэ не разлічаны, калі ёсць PostGIS (`--no-geometry` адключае).
-5. Толькі з `--geobotany`: **ачышчае** геабатанічныя палі ва ўсіх ПП і запаўняе іх нанова па палігонах табліцы `geo_regions_polygons` (слупкі `zone`, `subzone`, `okrug`, `text` і геаметрыя). Гэтай табліцы ў праекце няма, яна загружаецца асобна з шэйп-файла. Пасля гэтага напісанне зоны прыводзіцца да аднаго варыянта.
-
-Памылка ў адным файле не спыняе імпарт астатніх: яна лічыцца і пішацца ў лог, а ў канцы выводзіцца зводка. Каманда піша ў `excel_import.log`, імпарт з акна праграмы — у агульны `dendrobase.log`. Перад масавым імпартам зрабіце рэзервовую копію: `pg_dump -h localhost -U postgres postgres > backup.sql`.
-
-### Паўторны запуск
-
-Пасля кожнага файла каманда абнаўляе ў папцы з Excel файл стану `dendrobase_import_state.json`. Для кожнага файла там запісаны SHA-256 змесціва, час імпарту, рэжым (`overwrite`), статус, спіс папярэджанняў (прапушчаныя палі і радкі, нечытэльныя значэнні) і тэкст памылкі, калі яна была. Файл можна адкрыць у любым тэкставым рэдактары і паглядзець, што было не так з канкрэтнай ПП, не шукаючы ў логах і не запускаючы імпарт зноў.
-
-Пры наступным запуску файл **прапускаецца**, калі яго змесціва не змянілася, ён быў апрацаваны без памылак і яго ПП усё яшчэ ёсць у базе. Таму паўторны запуск па той жа папцы разбірае толькі новыя, змененыя і раней памылковыя файлы, а зводка паказвае, колькі файлаў прапушчана. Статусы:
-
-| Статус | Значэнне | Пры наступным запуску |
-|---|---|---|
-| `done` | файл апрацаваны, магчыма з папярэджаннямі | прапускаецца, пакуль не зменіцца |
-| `skipped` | у файле няма ліста `title`, нічога не запісана | прапускаецца, пакуль не зменіцца |
-| `error` | памылка БД або файл не прачытаны | спроба паўтараецца |
-
-Варта ведаць:
-
-- `--reimport` апрацоўвае ўсе файлы нанова, не зважаючы на стан (стан пры гэтым абнаўляецца). Той жа эфект дае выдаленне `dendrobase_import_state.json`.
-- Файл, імпартаваны без `--overwrite`, пры запуску з `--overwrite` апрацуецца зноў, каб перапісаць існуючыя радкі CRN і SERIES. Наадварот не трэба: імпартаваны з `--overwrite` потым прапускаецца і ў звычайным запуску.
-- Калі базу ачысцілі або стварылі нанова, нічога рабіць не трэба: ПП няма ў базе, таму запіс у стане не лічыцца, і файлы імпартуюцца зноў.
-- Папярэджанні не робяць файл «памылковым»: яны тычацца асобных палёў і радкоў, і паўторны запуск іх не выправіць, пакуль не выправіць сам файл.
-- Калі папка даступная толькі для чытання, стан не захоўваецца: каманда адзін раз папярэджвае пра гэта ў логу і працуе як раней, апрацоўваючы ўсе файлы.
-
-## Тэсты
-
-```bash
-pip install -r requirements-dev.txt
-pytest
-```
-
-- Unit-тэсты (`parsing`, `config`, `reference`, `maps`, `excel_import`) працуюць без базы і без дысплея.
-- Інтэграцыйныя тэсты (`tests/test_db.py`, поўны імпарт `run()` у `tests/test_excel_import.py`) ствараюць асобную базу `dendrobase_test` на серверы з `.env`, выконваюць `schema.sql` і выдаляюць базу пасля. Калі сервер недаступны, яны прапускаюцца. Назву базы можна змяніць праз `DENDROBASE_TEST_DB_NAME`.
-- Дымавыя тэсты інтэрфейсу `tests/test_ui_smoke.py` будуюць усе вокны з падменнай базай; акно імпарту правяраецца з дублем каманды (ход працы, спыненне, памылка) і адзін раз скразна з сапраўднай базай. Патрэбны дысплей (Tk); без яго яны прапускаюцца.
-
-## Структура базы
-
-| Табліца | Ключ | Змест |
-|---|---|---|
-| `title` | `n_probnoy_ploshchadi` (унікальны) | адзін радок на ПП, каля 60 палёў апісання, `geom` (PostGIS) |
-| `crn` | (`n_probnoy_ploshchadi`, `year`) | храналогія па гадах: `num`, `raw`, `std`, `res`, `ars` |
-| `series` | (`n_probnoy_ploshchadi`, `series_name`, `year`) | значэнне серыі за год |
-
-Знешнія ключы з `ON DELETE CASCADE`: выдаленне ПП выдаляе яе CRN і SERIES.
-
-## Што змянілася ў версіі 7
-
-Версія 7 перапісала адзін файл `DendroBASE_tkinter.py` у пакет (гл. «Структура праекту»). Акрамя структуры:
-
-- Пароль і налады падключэння вынесены ў `.env`; у кодзе іх больш няма.
-- Усе памылкі БД і інтэрфейсу апрацоўваюцца і лагуюцца; пры абрыве злучэння праграма перападключаецца.
-- Выпраўлены памылкі зыходнай версіі: падзенне пры недаступнай базе; фільтр па гадах на ўкладцы CRN, які не прымяняўся; мапа не адкрывалася на Windows (файл быў заняты падчас запісу); падзенне пры нелікавых гадах у фільтрах і пры адключэнні ўсіх слупкоў CRN; параметр «Коэфф. состава» пры імпарце трапляў у поле «Состав»; дзесятковая коска ў CRN з буфера не прымалася; новая ПП не з'яўлялася ў спісе без «Абнавіць»; поле `id` можна было перапісаць з укладкі «Інфармацыя».
-- Пракрутка колам мышы працуе на Windows, macOS і Linux; на Windows уключана падтрымка маштабавання экрана.
-- Інтэрфейс перапрацаваны: секцыі палёў, графікі CRN і серый, радок стану, сартаванне і экспарт табліц, абарона ад страты незахаваных змен, гарачыя клавішы, натыўная тэма кожнай АС.
-- Інтэрфейс пераведзены цалкам: замест мяшанкі беларускай і рускай (подпісы палёў, назвы парод) усе радкі беларускія з англійскім перакладам; мова (англійская па змаўчанні) і тэма (як у сістэме / светлая / цёмная) выбіраюцца ў наладах і запамінаюцца.
-- Імпарт з Excel стаў камандай з параметрамі замест скрыпта з зашытымі шляхамі; небяспечны крок з геабатанічнымі палігонамі робіцца толькі па яўным флагу. Паўторны запуск прапускае нязменныя апрацаваныя файлы па `dendrobase_import_state.json` у папцы з Excel; туды ж пішуцца папярэджанні і памылкі па кожным файле. Той жа імпарт даступны з праграмы («Інструменты → Імпарт даных…») з акном ходу працы.
-- Канічнае напісанне зоны: `Евразиатская таёжная` (як у імпарце). Калі ў вашай базе засталося `таежная`, выканайце імпарт або `UPDATE title SET geobotanicheskaya_zona = 'Евразиатская таёжная' WHERE geobotanicheskaya_zona = 'Евразиатская таежная'`.
-
-## Праблемы і рашэнні
-
-**Пры запуску ў кансолі з'яўляецца «A module that was compiled using NumPy 1.x cannot be run in NumPy 2.x» і трэйс з `numexpr`.** Гэта не памылка праграмы: у вашым Python стаіць стары пакет `numexpr`, сабраны пад NumPy 1, а pandas спрабуе яго падгрузіць як неабавязковую залежнасць. Праграма працуе далей. Каб прыбраць папярэджанне, абнавіце або выдаліце пакет:
-
-```bash
-python3 -m pip install -U numexpr      # або: python3 -m pip uninstall numexpr
-```
-
-Надзейней за ўсё запускаць праграму з віртуальнага асяроддзя (крок 3): тады глабальныя пакеты не ўплываюць. Сам інтэрфейс pandas не імпартуе, ён патрэбны толькі карце і імпарту з Excel.
-
-**Кнопкі не рэагуюць на клік (macOS).** У Tk 8.6.12 ёсць [вядомая памылка апрацоўкі мышы ў macOS](https://github.com/python/cpython/issues/110218): кнопкі, спісы і іншыя элементы могуць прапускаць клікі, асабліва калі курсор знаходзіцца ў акне пры яго адкрыцці. Выпраўленне ўвайшло ў Tk 8.6.13; усталёўшчык Python 3.11 атрымаў яго ў версіі 3.11.7. Адключэнне мадальных дыялогаў, замена падказак або тэмы ttk не выпраўляюць саму бібліятэку.
-
-Праграма правярае Tk перад падключэннем да БД і не запускае інтэрфейс са старым Tk Aqua. У лог запісваюцца шлях да Python, версіі Tcl і Tk, аконная сістэма і маштабаванне. Праверыць бібліятэку, якую сапраўды загружае абраны Python:
-
-```bash
-python3 -c 'import sys, tkinter as tk; r=tk.Tk(); r.withdraw(); print(sys.executable, "Tk", r.tk.call("package", "require", "Tk")); r.destroy()'
-```
-
-`info patchlevel` паказвае версію **Tcl**, а `tkinter.TkVersion` толькі `8.6` без нумара выпраўлення — яны не замяняюць гэтую праверку. `pip install -U ...` не абнаўляе Tk. Патрэбны Python з новай бібліятэкай і віртуальнае асяроддзе, створанае менавіта гэтым Python.
-
-Калі ўсталяваны [uv](https://docs.astral.sh/uv/guides/install-python/), асобнае асяроддзе можна стварыць так (пры наяўнасці старога `.venv` спачатку перайменуйце яго). Выкарыстоўваецца свежая версія `uv`, каб не выбраць старую зборку Python з кэша:
-
-```bash
-uvx --from uv@latest uv python install 3.12 --upgrade --no-bin
-uvx --from uv@latest uv venv --python 3.12 --managed-python .venv
-uv pip install --python .venv/bin/python -r requirements-dev.txt
-.venv/bin/python -m tkinter            # праверце: Tk >= 8.6.13
+docker compose up -d --wait
 .venv/bin/python -m dendrobase
 ```
 
-У IDE выберыце інтэрпрэтатар `.venv/bin/python`. Двайны клік па `run_app.py` выкарыстоўвае сістэмную асацыяцыю файлаў і можа зноў выбраць стары Python.
+Першая каманда падрыхтуе базу і дачакаецца яе гатоўнасці, другая адкрые праграму. Першы запуск можа заняць некалькі хвілін: Docker спампоўвае патрэбныя файлы. Новая база спачатку пустая — дадайце свае даныя.
 
-На Windows гэты канкрэтны баг Tk Aqua не дзейнічае: там іншая апрацоўка натыўных падзей, і ў справаздачы CPython ён не ўзнаўляўся. Праграма ўключае DPI awareness перад стварэннем вокнаў; пры праверцы Windows варта асобна прайсці клікі пры 100%, 150% і 200% маштабаванні і пасля пераносу акна паміж маніторамі. Праверкі на macOS не замяняюць такога тэсту.
+**Для наступных запускаў паўтарайце толькі крок 4**, адкрыўшы тэрмінал у папцы праекта. Захаваныя даныя застаюцца пасля закрыцця праграмы і перазапуску камп'ютара.
 
-**Не адкрываецца мапа.** Мапа патрабуе інтэрнэту для картаграфічнай падкладкі і сістэмнага браўзера. Файл мапы можна захаваць кнопкай «Захаваць як HTML…» і адкрыць уручную. Падкладка па змаўчанні — OpenTopoMap (`DEFAULT_TILES` у `dendrobase/maps.py`): сервер tile.openstreetmap.org паказвае заглушку «Access blocked» на старонках, адкрытых з лакальнага файла (браўзер не дасылае Referer), а CARTO патрабуе API-ключ, таму для мапы, якая адкрываецца праз `file://`, гэтыя падкладкі не працуюць.
+### Першыя крокі ў праграме
 
-## Вядомыя абмежаванні
+1. **Дадайце ПП:** **Файл → Новая пробная плошча…**. Запоўніце картку; затым можна ўставіць табліцы CRN і SERIES, скапіраваныя з Excel.
+2. **Праглядзіце даныя:** выберыце ПП у спісе злева. Справа будуць яе апісанне, храналогія і індывідуальныя серыі. Змены ў картцы захоўвайце кнопкай **Захаваць змены**.
+3. **Зрабіце выбарку:** на ўкладцы **Фільтры і пошук** задайце ўмовы і націсніце **Знайсці**. Кнопкі **Капіраваць** і **Экспарт…** дазваляюць перанесці вынікі ў Excel або іншую праграму для аналізу.
 
-- Мапа адкрываецца ў знешнім браўзеры, а не ўнутры акна праграмы, і патрабуе інтэрнэту для картаграфічнай падкладкі.
-- Акно «SQL-запыт» выконвае любы SQL ад імя карыстальніка з `.env`. Для працы з чужой базай выкарыстоўвайце карыстальніка толькі на чытанне.
-- Імпарт чытае толькі `.xlsx` / `.xlsm`. Для старога фармату `.xls` перазахавайце файлы ў Excel.
-- Код ПП змяніць з інтэрфейсу нельга (ён ключ для CRN і SERIES).
-- Спісы падказак для палёў са спісам (зона, падзона, акруга, раён, даступнасць, тып узораў) не перакладаюцца: гэта значэнні, якія захоўваюцца ў базе і па якіх працуе фільтр. Сістэмныя дыялогі (паведамленні, выбар файла) і радок меню на macOS ідуць за мовай і тэмай сістэмы.
+### Імпарт з Excel
+
+Адкрыйце **Інструменты → Імпарт даных…**, выберыце папку з файламі і націсніце **Пачаць імпарт**.
+
+Адзін файл `.xlsx` або `.xlsm` адпавядае адной ПП. Назва файла без пашырэння становіцца кодам ПП у ніжнім рэгістры: напрыклад, `PP01.xlsx` → `pp01`. Унутры чакаюцца лісты:
+
+- **`title`** — абавязковы: два слупкі, назва параметра і значэнне. Назвы параметраў — як у зыходнай анкеце, па-руску: напрыклад, `Широта,грд`, `Долгота, грд`, `Древесная порода`, `Первый год`.
+- **`crn`** — першы слупок з гадамі, далей слупкі з загалоўкамі `num`, `raw`, `std`, `res`, `ars`. Незапоўненыя паказчыкі можна прапусціць.
+- **`series`** — першы слупок з гадамі, далей слупкі з назвамі серый у загалоўках і вымярэннямі па гадах.
+
+Лісты `crn` і `series` неабавязковыя: даныя можна дадаць пазней. Пры апрацоўцы файла апісанне ПП абнаўляецца; існуючыя значэнні CRN і SERIES замяняюцца толькі з опцыяй **Перапісваць існуючыя радкі CRN і SERIES**. Раней апрацаваныя нязменныя файлы звычайна прапускаюцца.
+
+---
+
+## English
+
+DendroBASE is a desktop application for working with dendrochronological data from Belarus. It keeps sample plot descriptions, chronologies and tree-ring measurements in one database, helping researchers find data and prepare datasets for analysis. It runs on Windows, macOS and Linux.
+
+### What you can do
+
+- **Manage sample plot records:** location, coordinates, tree species, forest stand descriptions, samples and contributors.
+- **View CRN chronologies:** annual master chronology data in tables and charts (`raw`, `std`, `res`, `ars`), with tools to edit records.
+- **View individual SERIES:** measurements from individual trees or cores, compare them on a chart and select a year range.
+- **Find and filter data** by plot code, species, geobotanical area, forest type and years.
+- **Bring in data from Excel** by importing files or pasting tables. Copy results back to Excel or export them as CSV.
+- **View sample plots on a map** using their coordinates. The map opens in your browser and needs an internet connection; you can also save it as HTML.
+
+### Change the interface language
+
+The interface starts in English. To change it:
+
+1. Open **Tools → Settings…**.
+2. Under **Interface language**, choose **Беларуская** or **English**.
+3. Click **Save**.
+
+If the interface is already in Belarusian, open **Інструменты → Налады…**, choose **English** and click **Захаваць**. You can also open settings with `Ctrl+,` (`Cmd+,` on macOS).
+
+The language changes immediately and is remembered. The same window offers light, dark and system themes. Entered and imported data stay in their original language.
+
+### Install and run
+
+Setup is needed only once. The application uses Python and stores data in PostgreSQL with PostGIS. The instructions below use Docker to create the database automatically.
+
+#### 1. Prepare your computer
+
+- **Windows and macOS:** install [Python](https://www.python.org/downloads/) 3.10 or newer with the Tcl/Tk (Tkinter) component used for the application windows. On macOS, Tk 8.6.13 or newer is required; run `python3 -m tkinter` to see the version in a small test window.
+- **Linux:** install Python 3.10 or newer, Tkinter and virtual environment support. The Ubuntu / Debian command is included below.
+- Install and start [Docker Desktop](https://docs.docker.com/desktop/), choosing your operating system.
+- Download and extract the project files. On GitHub, use **Code → Download ZIP**.
+
+#### 2. Prepare the application
+
+Open **PowerShell** on Windows or **Terminal** on macOS / Linux. Go to the project folder containing `README.md`: type `cd "path to the project folder"`, replacing the text in quotes with your folder's location. Then run the following commands one at a time.
+
+**Windows (PowerShell):**
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
+notepad .env
+```
+
+**macOS:**
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env
+open -e .env
+```
+
+**Linux (Ubuntu / Debian):**
+
+```bash
+sudo apt update
+sudo apt install python3 python3-venv python3-tk
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env
+nano .env
+```
+
+On other Linux distributions, install these components with your package manager, then follow the commands starting with `python3 -m venv .venv`.
+
+#### 3. Set a database password
+
+The last command opens the `.env` settings file. Find `DENDROBASE_DB_PASSWORD=` and add your own password after `=`. Leave the other settings as they are. Save the file and close the editor. In nano, press `Ctrl+O`, `Enter`, then `Ctrl+X`.
+
+If your institution already has a configured DendroBASE database, enter its address, port, database name, username and password in `.env`, using the details provided by your administrator. In that case, Docker and the `docker compose` command are unnecessary.
+
+#### 4. Start DendroBASE
+
+Make sure Docker Desktop is running. From the same project folder, run:
+
+**Windows (PowerShell):**
+
+```powershell
+docker compose up -d --wait
+.\.venv\Scripts\python.exe -m dendrobase
+```
+
+**macOS / Linux:**
+
+```bash
+docker compose up -d --wait
+.venv/bin/python -m dendrobase
+```
+
+The first command prepares the database and waits until it is ready; the second opens the application. The first launch may take a few minutes while Docker downloads the required files. A new database starts empty, ready for your data.
+
+**For later launches, repeat only step 4**, opening the terminal in the project folder. Saved data remain after closing the application or restarting your computer.
+
+### First steps in the application
+
+1. **Add a plot:** choose **File → New sample plot…**. Fill in the plot record, then optionally paste CRN and SERIES tables copied from Excel.
+2. **Browse your data:** select a plot in the list on the left. Its description, chronology and individual series appear on the right. Click **Save changes** after editing the plot record.
+3. **Prepare a dataset:** open **Filters and search**, choose your conditions and click **Search**. Use **Copy** or **Export…** to take the results into Excel or another analysis tool.
+
+### Import from Excel
+
+Open **Tools → Import data…**, select the folder containing your files and click **Start import**.
+
+Each `.xlsx` or `.xlsm` file represents one plot. The filename without its extension becomes the lowercase plot code: for example, `PP01.xlsx` → `pp01`. The expected worksheets are:
+
+- **`title`** — required: two columns containing parameter names and values. Use the Russian parameter names from the original plot form, such as `Широта,грд` (latitude), `Долгота, грд` (longitude), `Древесная порода` (tree species) and `Первый год` (first year).
+- **`crn`** — years in the first column, followed by columns headed `num`, `raw`, `std`, `res`, `ars`. Unavailable measures may be omitted.
+- **`series`** — years in the first column, followed by columns headed with series names and containing annual measurements.
+
+The `crn` and `series` worksheets are optional; you can add their data later. Processing a file updates its plot description; existing CRN and SERIES values are replaced only when **Overwrite existing CRN and SERIES rows** is selected. Previously processed files that have not changed are normally skipped.

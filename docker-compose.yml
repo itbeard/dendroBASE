@@ -1,0 +1,33 @@
+# PostgreSQL + PostGIS для DendroBASE у Docker.
+#
+# Налады бяруцца з файла .env у гэтай папцы (той жа, што чытае праграма):
+# DENDROBASE_DB_NAME, DENDROBASE_DB_USER, DENDROBASE_DB_PASSWORD, DENDROBASE_DB_PORT.
+#
+#   docker compose up -d        запусціць (пры першым запуску выканае schema.sql)
+#   docker compose logs -f db   паглядзець логі сервера
+#   docker compose down         спыніць, даныя застаюцца ў томе dendrobase_pgdata
+#   docker compose down -v      спыніць і ВЫДАЛІЦЬ даныя
+services:
+  db:
+    # imresamu/postgis: тая ж зборка, што афіцыйны postgis/postgis, але з падтрымкай arm64 (Apple Silicon)
+    image: imresamu/postgis:17-3.5
+    container_name: dendrobase-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DENDROBASE_DB_NAME:-postgres}
+      POSTGRES_USER: ${DENDROBASE_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DENDROBASE_DB_PASSWORD:?Задайце DENDROBASE_DB_PASSWORD у .env}
+    ports:
+      - "${DENDROBASE_DB_PORT:-5432}:5432"
+    volumes:
+      - dendrobase_pgdata:/var/lib/postgresql/data
+      # выконваецца толькі пры першай ініцыялізацыі тома, пасля скрыпта PostGIS (10_postgis.sh)
+      - ./schema.sql:/docker-entrypoint-initdb.d/20-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DENDROBASE_DB_USER:-postgres} -d ${DENDROBASE_DB_NAME:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  dendrobase_pgdata:

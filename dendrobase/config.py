@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_PREFIX = "DENDROBASE_"
@@ -63,9 +63,7 @@ class Settings:
         :param dotenv: ці падгружаць файлы .env перад чытаннем os.environ.
         """
         if env is None:
-            if dotenv:
-                load_dotenv_files()
-            env = os.environ
+            env = {**read_dotenv_files(), **os.environ} if dotenv else dict(os.environ)
 
         def get(name: str, default: str = "") -> str:
             return env.get(ENV_PREFIX + name, default).strip()
@@ -109,13 +107,17 @@ def dotenv_candidates() -> list[Path]:
     return unique
 
 
-def load_dotenv_files() -> list[Path]:
-    """Падгрузіць знойдзеныя .env без перазапісу ўжо зададзеных пераменных."""
+def read_dotenv_files() -> dict[str, str]:
+    """Значэнні з усіх знойдзеных .env, аб'яднаныя па прыярытэце (гл. dotenv_candidates).
+
+    os.environ не змяняецца: налады застаюцца лакальнымі для працэсу, а не «выцякаюць» далей.
+    """
+    values: dict[str, str] = {}
     loaded: list[Path] = []
-    for path in dotenv_candidates():
+    for path in reversed(dotenv_candidates()):  # ад найменш прыярытэтнага да найбольш
         if path.is_file():
-            load_dotenv(path, override=False, encoding="utf-8")
+            values.update({k: v for k, v in dotenv_values(path, encoding="utf-8").items() if v is not None})
             loaded.append(path)
     if loaded:
-        logging.getLogger(__name__).debug("Падгружаны .env: %s", ", ".join(map(str, loaded)))
-    return loaded
+        logging.getLogger(__name__).debug("Прачытаны .env: %s", ", ".join(map(str, loaded)))
+    return values

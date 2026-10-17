@@ -47,6 +47,7 @@ dendrobase/                 Python-пакет
     feedback.py             паведамленні карыстальніку + логі
 tests/                      pytest: unit, інтэграцыйныя (PostgreSQL) і дымавыя (Tk)
 schema.sql                  схема базы даных
+docker-compose.yml          PostgreSQL + PostGIS у Docker, налады з .env
 run_app.py                  лаўнчар для запуску двайным клікам
 .env.example                узор файла налад
 requirements.txt            залежнасці; requirements-dev.txt дадае pytest
@@ -60,11 +61,23 @@ requirements.txt            залежнасці; requirements-dev.txt дада�
 
 ### 1. PostgreSQL і PostGIS
 
+**Варыянт А: Docker (рэкамендуецца).** Адна каманда дае PostgreSQL 17 з PostGIS на любой АС, табліцы ствараюцца аўтаматычна. Патрэбны [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+```bash
+cp .env.example .env             # запоўніце пароль (гл. крок 4), порт можна пакінуць 5432
+docker compose up -d             # пры першым запуску выканае schema.sql
+docker compose ps                # статус healthy = сервер гатовы
+```
+
+Выкарыстоўваецца вобраз `imresamu/postgis` (тая ж зборка, што афіцыйны `postgis/postgis`, але з падтрымкай arm64), таму ён працуе і на Intel/AMD, і на Apple Silicon без эмуляцыі. Compose чытае той жа `.env`, што і праграма, таму порт, база, карыстальнік і пароль задаюцца адзін раз. Даныя жывуць у томе `dendrobase_pgdata` і перажываюць перазапускі; `docker compose down -v` выдаляе іх. Крок 2 пры гэтым варыянце прапускаецца.
+
+**Варыянт Б: устаноўка на машыну.**
+
 - **Windows**: усталёўшчык з [postgresql.org](https://www.postgresql.org/download/windows/), PostGIS дадаецца праз Stack Builder у канцы ўстаноўкі.
 - **macOS** (Homebrew): `brew install postgresql@15 postgis`, затым `brew services start postgresql@15`.
 - **Linux** (Debian/Ubuntu): `sudo apt install postgresql postgis`.
 
-База павінна быць створана з кадыроўкай UTF8 і не-`C` лакаллю (напрыклад `en_US.UTF-8` або `ru_RU.UTF-8`), інакш пошук без уліку рэгістру (`ILIKE`) не будзе працаваць для кірыліцы. Стандартныя ўсталёўшчыкі робяць так самі.
+База павінна быць створана з кадыроўкай UTF8 і не-`C` лакаллю (напрыклад `en_US.UTF-8` або `ru_RU.UTF-8`), інакш пошук без уліку рэгістру (`ILIKE`) не будзе працаваць для кірыліцы. Стандартныя ўсталёўшчыкі і Docker-вобраз робяць так самі.
 
 ### 2. Стварэнне табліц
 
@@ -123,6 +136,23 @@ python -m dendrobase
 Альтэрнатывы: двайны клік па `run_app.py`, або на Windows `pythonw run_app.py`, каб не адкрывалася кансоль. Пасля `pip install -e .` з'яўляюцца каманды `dendrobase` і `dendrobase-import`.
 
 Калі падключыцца да БД не ўдалося або ў базе няма патрэбных табліц, праграма паказвае зразумелае паведамленне з падказкай і завяршаецца.
+
+### Перанос даных з іншай машыны
+
+Docker або новая ўстаноўка даюць пусты сервер. Каб перанесці існуючую базу (напрыклад, з Windows-машыны, дзе яна вялася), зрабіце дамп там і аднавіце яго тут:
+
+```bash
+# на машыне з данымі
+pg_dump -h localhost -p 5433 -U postgres -Fc -f dendrobase.dump postgres
+
+# на новай машыне, сервер у Docker
+docker compose exec -T db pg_restore -U postgres -d postgres --clean --if-exists --no-owner < dendrobase.dump
+
+# на новай машыне, сервер усталяваны лакальна
+pg_restore -h localhost -p 5432 -U postgres -d postgres --clean --if-exists --no-owner dendrobase.dump
+```
+
+Паведамленні пра тое, што пашырэнне `postgis` ужо існуе, можна ігнараваць. Імя базы і порт падстаўце свае.
 
 ## Логі
 
